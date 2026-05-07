@@ -35,8 +35,7 @@ public struct OMTFrame: Equatable, Sendable {
     }
 
     public static func metadata(_ metadata: OMTMetadata) -> OMTFrame {
-        var payload = Data(metadata.xml.utf8)
-        payload.append(0)
+        let payload = Data(metadata.xml.utf8)
         return OMTFrame(frameType: .metadata, timestamp: metadata.timestamp, payload: payload, metadata: metadata.xml)
     }
 
@@ -89,9 +88,7 @@ public struct OMTFrame: Equatable, Sendable {
 
     private var encodedPayload: Data {
         if frameType == .metadata, payload.isEmpty, let metadata {
-            var data = Data(metadata.utf8)
-            data.append(0)
-            return data
+            return Data(metadata.utf8)
         }
         return payload
     }
