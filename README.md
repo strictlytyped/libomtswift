@@ -47,4 +47,4 @@ receiver.onFrame = { frame in
 
 ## VMX linking
 
-The Swift package does not hard-link `libvmx`; it resolves `VMX_*` symbols dynamically from the process by default. PTZ Live links `vendor/libvmx/build/LibVMX.xcframework`, so app code can use `.process`. If needed, pass `.path(...)` to `OMTSender` or `OMTReceiver` to load a specific library image.
+The Swift package does not hard-link `libvmx`; it resolves `VMX_*` symbols dynamically from the process by default. If needed, pass `.path(...)` to `OMTSender` or `OMTReceiver` to load a specific library image.
