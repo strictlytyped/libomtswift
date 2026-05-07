@@ -21,8 +21,20 @@ public final class OMTDiscovery: NSObject {
         }
     }
 
+    public static func getInstance() -> OMTDiscovery {
+        shared
+    }
+
+    public static func GetInstance() -> OMTDiscovery {
+        getInstance()
+    }
+
     public func start() {
         browser.searchForServices(ofType: OMTConstants.serviceType, inDomain: "local.")
+    }
+
+    public func Start() {
+        start()
     }
 
     public func stop() {
@@ -34,6 +46,10 @@ public final class OMTDiscovery: NSObject {
         publish()
     }
 
+    public func Stop() {
+        stop()
+    }
+
     public func find(_ fullNameOrURL: String) -> OMTAddress? {
         if let urlAddress = OMTAddress.parseURL(fullNameOrURL) {
             return urlAddress
@@ -41,6 +57,14 @@ public final class OMTDiscovery: NSObject {
         return queue.sync {
             resolvedAddresses[fullNameOrURL]
         }
+    }
+
+    public func getAddresses() -> [String] {
+        addresses.map(\.fullName)
+    }
+
+    public func GetAddresses() -> [String] {
+        getAddresses()
     }
 
     private func publish() {

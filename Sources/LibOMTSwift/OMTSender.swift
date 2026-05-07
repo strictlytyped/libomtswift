@@ -9,18 +9,28 @@ public final class OMTSender {
 
     public var url: String { address.url }
     public var connectionCount: Int { lock.withLock { channels.count } }
+    public var port: Int { address.port }
 
     public var quality: OMTQuality {
         get { lock.withLock { configuredQuality } }
         set { lock.withLock { configuredQuality = newValue } }
     }
 
+    public var Port: Int { port }
+    public var Address: String { address.fullName }
+    public var URL: String { url }
+    public var Connections: Int { connectionCount }
+    public var Quality: OMTQuality {
+        get { quality }
+        set { quality = newValue }
+    }
+
     private let queue = DispatchQueue(label: "com.strictly.omtswift.sender")
     private let lock = NSLock()
     private let listener: NWListener
     private let vmxSymbolProvider: VMXSymbolProvider
-    private let videoClock = OMTClock()
-    private let audioClock = OMTClock()
+    private var videoClock = OMTClock()
+    private var audioClock = OMTClock(audio: true)
     private var netService: NetService?
     private var channels: [OMTChannel] = []
     private var configuredQuality: OMTQuality
@@ -90,6 +100,14 @@ public final class OMTSender {
         current.forEach { $0.close() }
     }
 
+    public func close() {
+        stop()
+    }
+
+    public func Dispose() {
+        stop()
+    }
+
     public func setSenderInformation(_ senderInfo: OMTSenderInfo?) {
         let xml = senderInfo?.xml
         lock.withLock {
@@ -100,10 +118,18 @@ public final class OMTSender {
         }
     }
 
+    public func SetSenderInformation(_ senderInfo: OMTSenderInfo?) {
+        setSenderInformation(senderInfo)
+    }
+
     public func addConnectionMetadata(_ xml: String) {
         lock.withLock {
             connectionMetadata.append(xml)
         }
+    }
+
+    public func AddConnectionMetadata(_ xml: String) {
+        addConnectionMetadata(xml)
     }
 
     public func clearConnectionMetadata() {
@@ -112,11 +138,28 @@ public final class OMTSender {
         }
     }
 
+    public func ClearConnectionMetadata() {
+        clearConnectionMetadata()
+    }
+
+    public func setRedirect(_ newAddress: String?) {
+        let xml = OMTRedirect.toXML(newAddress)
+        _ = try? sendMetadata(OMTMetadata(xml: xml))
+    }
+
+    public func SetRedirect(_ newAddress: String?) {
+        setRedirect(newAddress)
+    }
+
     public func setTally(_ tally: OMTTally) {
         lock.withLock {
             self.tally = tally
         }
         _ = try? sendMetadata(OMTMetadata(xml: OMTMetadataCommand.tally(tally)))
+    }
+
+    public func SetTally(_ tally: OMTTally) {
+        setTally(tally)
     }
 
     @discardableResult
@@ -138,6 +181,27 @@ public final class OMTSender {
             return try sendAudio(frame)
         }
         return 0
+    }
+
+    @discardableResult
+    public func Send(_ frame: OMTMediaFrame) throws -> Int {
+        try send(frame)
+    }
+
+    public func getVideoStatistics() -> OMTStatistics {
+        aggregateStatistics(for: .video)
+    }
+
+    public func GetVideoStatistics() -> OMTStatistics {
+        getVideoStatistics()
+    }
+
+    public func getAudioStatistics() -> OMTStatistics {
+        aggregateStatistics(for: .audio)
+    }
+
+    public func GetAudioStatistics() -> OMTStatistics {
+        getAudioStatistics()
     }
 
     private func accept(_ connection: NWConnection) {
@@ -198,6 +262,23 @@ public final class OMTSender {
         return current.map(\.suggestedQuality).max { $0.rawValue < $1.rawValue } ?? .default
     }
 
+    private func aggregateStatistics(for frameType: OMTFrameType) -> OMTStatistics {
+        let current = lock.withLock { channels }
+        return current.reduce(into: OMTStatistics()) { result, channel in
+            guard channel.isSubscribed(to: frameType) else { return }
+            let stats = channel.statistics
+            result.bytesSent += stats.bytesSent
+            result.bytesReceived += stats.bytesReceived
+            result.bytesSentSinceLast += stats.bytesSentSinceLast
+            result.bytesReceivedSinceLast += stats.bytesReceivedSinceLast
+            result.frames += stats.frames
+            result.framesSinceLast += stats.framesSinceLast
+            result.framesDropped += stats.framesDropped
+            result.codecTime += stats.codecTime
+            result.codecTimeSinceLast += stats.codecTimeSinceLast
+        }
+    }
+
     private func codec(width: Int32, height: Int32, colorSpace: OMTColorSpace) throws -> OMTVMXCodec {
         let profile = omtVMXProfile(for: currentQualitySuggestion())
         let key = OMTVideoCodecKey(width: width, height: height, profile: profile, colorSpace: colorSpace)
@@ -215,6 +296,10 @@ public final class OMTSender {
             return 0
         }
 
+        var frame = frame
+        if frame.timestamp == -1 {
+            videoClock.process(&frame)
+        }
         var flags = frame.flags
         var payload = frame.data
         var previewPayloadLength: Int?
@@ -260,6 +345,10 @@ public final class OMTSender {
             return 0
         }
 
+        var frame = frame
+        if frame.timestamp == -1 {
+            audioClock.process(&frame)
+        }
         let encoded = OMTFPA1Codec.encode(frame.data, channels: Int(frame.channels), samplesPerChannel: Int(frame.samplesPerChannel))
         let format = OMTAudioFormatDescription(
             codec: .fpa1,

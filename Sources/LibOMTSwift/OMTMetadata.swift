@@ -17,6 +17,89 @@ public enum OMTMetadataCommand {
     }
 }
 
+public enum OMTMetadataConstants {
+    public static let CHANNEL_SUBSCRIBE_VIDEO = OMTMetadataCommand.subscribeVideo
+    public static let CHANNEL_SUBSCRIBE_AUDIO = OMTMetadataCommand.subscribeAudio
+    public static let CHANNEL_SUBSCRIBE_METADATA = OMTMetadataCommand.subscribeMetadata
+    public static let CHANNEL_PREVIEW_VIDEO_ON = OMTMetadataCommand.previewVideoOn
+    public static let CHANNEL_PREVIEW_VIDEO_OFF = OMTMetadataCommand.previewVideoOff
+    public static let TALLY_PREVIEW = #"<OMTTally Preview="true" Program="false" />"#
+    public static let TALLY_PROGRAM = #"<OMTTally Preview="false" Program="true" />"#
+    public static let TALLY_PREVIEWPROGRAM = #"<OMTTally Preview="true" Program="true" />"#
+    public static let TALLY_NONE = #"<OMTTally Preview="false" Program="false" />"#
+}
+
+public enum OMTMetadataTemplates {
+    public static let SUGGESTED_QUALITY_PREFIX = #"<OMTSettings Quality="#
+    public static let SUGGESTED_QUALITY = OMTMetadataCommand.suggestedQualityDefault
+    public static let SENDER_INFO_NAME = "OMTInfo"
+    public static let SENDER_INFO_PREFIX = "<OMTInfo"
+    public static let ADDRESS_NAME = "OMTAddress"
+    public static let REDIRECT_NAME = "OMTRedirect"
+    public static let REDIRECT_PREFIX = "<OMTRedirect"
+}
+
+public enum OMTMetadataUtils {
+    public static func tryParse(_ xml: String) -> String? {
+        xml.trimmingCharacters(in: .whitespacesAndNewlines).first == "<" ? xml : nil
+    }
+
+    public static func TryParse(_ xml: String) -> String? {
+        tryParse(xml)
+    }
+}
+
+public enum OMTRedirect {
+    public static func toXML(_ address: String?) -> String {
+        guard let address, !address.isEmpty else {
+            return #"<OMTRedirect />"#
+        }
+        return #"<OMTRedirect Address="\#(address.omtEscapedXMLAttribute)" />"#
+    }
+
+    public static func ToXML(_ address: String?) -> String {
+        toXML(address)
+    }
+
+    public static func fromXML(_ xml: String) -> String? {
+        xml.omtXMLAttribute("Address")
+    }
+
+    public static func FromXML(_ xml: String) -> String? {
+        fromXML(xml)
+    }
+}
+
+public enum OMTMetadataFactory {
+    public static func fromTally(_ tally: OMTTally) -> OMTMetadata {
+        OMTMetadata(xml: OMTMetadataCommand.tally(tally))
+    }
+
+    public static func fromMediaFrame(_ metadata: OMTMediaFrame) -> OMTMetadata? {
+        guard metadata.type == .metadata else { return nil }
+        let xml = metadata.frameMetadata ?? OMTUtils.utf8String(from: metadata.data)
+        return OMTMetadata(timestamp: metadata.timestamp, xml: xml)
+    }
+}
+
+public extension OMTMetadata {
+    static func fromTally(_ tally: OMTTally) -> OMTMetadata {
+        OMTMetadataFactory.fromTally(tally)
+    }
+
+    static func FromTally(_ tally: OMTTally) -> OMTMetadata {
+        fromTally(tally)
+    }
+
+    static func fromMediaFrame(_ metadata: OMTMediaFrame) -> OMTMetadata? {
+        OMTMetadataFactory.fromMediaFrame(metadata)
+    }
+
+    static func FromMediaFrame(_ metadata: OMTMediaFrame) -> OMTMetadata? {
+        fromMediaFrame(metadata)
+    }
+}
+
 struct OMTMetadataState {
     var subscriptions: OMTFrameType = []
     var tally = OMTTally()

@@ -43,4 +43,36 @@ final class OMTFrameTests: XCTestCase {
         XCTAssertEqual(decoded.payload, payload)
         XCTAssertEqual(decoded.metadata, #"<Frame Note="ok" />"#)
     }
+
+    func testPreviewPayloadDoesNotForcePreviewEncoding() throws {
+        let payload = Data(0..<64)
+        let frame = OMTFrame(
+            frameType: .video,
+            timestamp: 101,
+            videoFormat: OMTVideoFormatDescription(
+                codec: .vmx1,
+                width: 1920,
+                height: 1080,
+                frameRateNumerator: 60000,
+                frameRateDenominator: 1001,
+                aspectRatio: 16.0 / 9.0,
+                flags: [],
+                colorSpace: .bt709
+            ),
+            payload: payload,
+            previewPayloadLength: 16
+        )
+
+        let fullFrame = try OMTFrame.decode(try frame.encoded())
+        XCTAssertEqual(fullFrame.videoFormat?.width, 1920)
+        XCTAssertEqual(fullFrame.videoFormat?.height, 1080)
+        XCTAssertEqual(fullFrame.videoFormat?.flags.contains(.preview), false)
+        XCTAssertEqual(fullFrame.payload, payload)
+
+        let previewFrame = try OMTFrame.decode(try frame.encoded(preview: true))
+        XCTAssertEqual(previewFrame.videoFormat?.width, 1920)
+        XCTAssertEqual(previewFrame.videoFormat?.height, 1080)
+        XCTAssertEqual(previewFrame.videoFormat?.flags.contains(.preview), true)
+        XCTAssertEqual(previewFrame.payload, payload.prefix(16))
+    }
 }

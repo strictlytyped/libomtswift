@@ -56,6 +56,103 @@ public struct OMTMediaFrame: Equatable, Sendable {
         self.compressedData = compressedData
         self.frameMetadata = frameMetadata
     }
+
+    public var frameRate: Float {
+        get { OMTUtils.toFrameRate(frameRateNumerator, frameRateDenominator) }
+        set {
+            let values = OMTUtils.fromFrameRate(newValue)
+            frameRateNumerator = values.numerator
+            frameRateDenominator = values.denominator
+        }
+    }
+
+    public var `Type`: OMTFrameType {
+        get { type }
+        set { type = newValue }
+    }
+
+    public var Timestamp: Int64 {
+        get { timestamp }
+        set { timestamp = newValue }
+    }
+
+    public var Codec: Int32 {
+        get { codec.rawValue }
+        set { codec = OMTCodec(rawValue: newValue) ?? codec }
+    }
+
+    public var Width: Int32 {
+        get { width }
+        set { width = newValue }
+    }
+
+    public var Height: Int32 {
+        get { height }
+        set { height = newValue }
+    }
+
+    public var Stride: Int32 {
+        get { stride }
+        set { stride = newValue }
+    }
+
+    public var Flags: OMTVideoFlags {
+        get { flags }
+        set { flags = newValue }
+    }
+
+    public var FrameRateN: Int32 {
+        get { frameRateNumerator }
+        set { frameRateNumerator = newValue }
+    }
+
+    public var FrameRateD: Int32 {
+        get { frameRateDenominator }
+        set { frameRateDenominator = newValue }
+    }
+
+    public var FrameRate: Float {
+        get { frameRate }
+        set { frameRate = newValue }
+    }
+
+    public var AspectRatio: Float {
+        get { aspectRatio }
+        set { aspectRatio = newValue }
+    }
+
+    public var ColorSpace: OMTColorSpace {
+        get { colorSpace }
+        set { colorSpace = newValue }
+    }
+
+    public var SampleRate: Int32 {
+        get { sampleRate }
+        set { sampleRate = newValue }
+    }
+
+    public var Channels: Int32 {
+        get { channels }
+        set { channels = newValue }
+    }
+
+    public var SamplesPerChannel: Int32 {
+        get { samplesPerChannel }
+        set { samplesPerChannel = newValue }
+    }
+
+    public var DataLength: Int {
+        data.count
+    }
+
+    public var CompressedLength: Int {
+        compressedData?.count ?? 0
+    }
+
+    public var FrameMetadataLength: Int {
+        guard let frameMetadata else { return 0 }
+        return Data(frameMetadata.utf8).count + 1
+    }
 }
 
 public struct OMTSenderInfo: Equatable, Sendable {
@@ -63,7 +160,7 @@ public struct OMTSenderInfo: Equatable, Sendable {
     public var manufacturer: String
     public var version: String
 
-    public init(productName: String, manufacturer: String, version: String) {
+    public init(productName: String = "", manufacturer: String = "", version: String = "") {
         self.productName = productName
         self.manufacturer = manufacturer
         self.version = version
@@ -84,6 +181,37 @@ public struct OMTSenderInfo: Equatable, Sendable {
         self.productName = productName
         self.manufacturer = manufacturer
         self.version = version
+    }
+
+    public var ProductName: String {
+        get { productName }
+        set { productName = newValue }
+    }
+
+    public var Manufacturer: String {
+        get { manufacturer }
+        set { manufacturer = newValue }
+    }
+
+    public var Version: String {
+        get { version }
+        set { version = newValue }
+    }
+
+    public func toXML() -> String {
+        xml
+    }
+
+    public func ToXML() -> String {
+        xml
+    }
+
+    public static func fromXML(_ xml: String) -> OMTSenderInfo? {
+        OMTSenderInfo(xml: xml)
+    }
+
+    public static func FromXML(_ xml: String) -> OMTSenderInfo? {
+        fromXML(xml)
     }
 }
 

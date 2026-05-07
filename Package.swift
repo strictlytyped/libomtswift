@@ -21,7 +21,15 @@ let package = Package(
         ),
         .target(
             name: "LibOMTVMXShim",
-            publicHeadersPath: "include"
+            dependencies: ["LibVMX"],
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .unsafeFlags(["-fdeclspec"])
+            ]
+        ),
+        .binaryTarget(
+            name: "LibVMX",
+            path: "../libvmx/build/LibVMX.xcframework"
         ),
         .testTarget(
             name: "LibOMTSwiftTests",

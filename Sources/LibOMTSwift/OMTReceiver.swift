@@ -10,6 +10,12 @@ public final class OMTReceiver {
     public private(set) var address: OMTAddress
     public private(set) var redirectAddress: String?
     public private(set) var senderInfo: OMTSenderInfo?
+    public var isConnected: Bool {
+        lock.withLock { videoChannel != nil || audioChannel != nil }
+    }
+
+    public var Address: String { address.url }
+    public var RedirectAddress: String? { redirectAddress }
 
     private let queue = DispatchQueue(label: "com.strictly.omtswift.receiver")
     private let lock = NSLock()
@@ -42,6 +48,21 @@ public final class OMTReceiver {
             flags: flags,
             vmxSymbolProvider: vmxSymbolProvider
         )
+    }
+
+    public convenience init(
+        _ address: String,
+        frameTypes: OMTFrameType,
+        format: OMTPreferredVideoFormat = .uyvy,
+        flags: OMTReceiveFlags = []
+    ) throws {
+        if let parsed = OMTAddress.parseURL(address) {
+            try self.init(address: parsed, frameTypes: frameTypes, preferredVideoFormat: format, flags: flags)
+        } else if let discovered = OMTDiscovery.shared.find(address) {
+            try self.init(address: discovered, frameTypes: frameTypes, preferredVideoFormat: format, flags: flags)
+        } else {
+            throw OMTError.invalidAddress(address)
+        }
     }
 
     public init(
@@ -77,11 +98,27 @@ public final class OMTReceiver {
         current.forEach { $0.close() }
     }
 
+    public func Dispose() {
+        close()
+    }
+
+    public func isConnectedNow() -> Bool {
+        isConnected
+    }
+
+    public func IsConnected() -> Bool {
+        isConnected
+    }
+
     public func setTally(_ tally: OMTTally) {
         lock.withLock {
             self.tally = tally
         }
         sendControl(OMTMetadataCommand.tally(tally))
+    }
+
+    public func SetTally(_ tally: OMTTally) {
+        setTally(tally)
     }
 
     public func setSuggestedQuality(_ quality: OMTQuality) {
@@ -91,11 +128,19 @@ public final class OMTReceiver {
         sendControl(OMTMetadataCommand.suggestedQuality(quality))
     }
 
+    public func SetSuggestedQuality(_ quality: OMTQuality) {
+        setSuggestedQuality(quality)
+    }
+
     public func setFlags(_ flags: OMTReceiveFlags) {
         lock.withLock {
             receiveFlags = flags
         }
         sendControl(flags.contains(.preview) ? OMTMetadataCommand.previewVideoOn : OMTMetadataCommand.previewVideoOff)
+    }
+
+    public func SetFlags(_ flags: OMTReceiveFlags) {
+        setFlags(flags)
     }
 
     @discardableResult
@@ -106,6 +151,51 @@ public final class OMTReceiver {
             onError?(error)
             return 0
         }
+    }
+
+    @discardableResult
+    public func send(_ metadata: OMTMediaFrame) -> Int {
+        guard metadata.type == .metadata, let value = OMTMetadata.fromMediaFrame(metadata) else {
+            return 0
+        }
+        return sendMetadata(value)
+    }
+
+    @discardableResult
+    public func Send(_ metadata: OMTMediaFrame) -> Int {
+        send(metadata)
+    }
+
+    public func getSenderInformation() -> OMTSenderInfo? {
+        senderInfo ?? lock.withLock { videoChannel?.senderInfo ?? audioChannel?.senderInfo }
+    }
+
+    public func GetSenderInformation() -> OMTSenderInfo? {
+        getSenderInformation()
+    }
+
+    public func getRemoteEndpoint() -> (host: String, port: Int) {
+        (address.host ?? address.machineName, address.port)
+    }
+
+    public func GetRemoteEndPoint() -> (host: String, port: Int) {
+        getRemoteEndpoint()
+    }
+
+    public func getVideoStatistics() -> OMTStatistics {
+        lock.withLock { videoChannel?.statistics ?? OMTStatistics() }
+    }
+
+    public func GetVideoStatistics() -> OMTStatistics {
+        getVideoStatistics()
+    }
+
+    public func getAudioStatistics() -> OMTStatistics {
+        lock.withLock { audioChannel?.statistics ?? OMTStatistics() }
+    }
+
+    public func GetAudioStatistics() -> OMTStatistics {
+        getAudioStatistics()
     }
 
     private func connect() {

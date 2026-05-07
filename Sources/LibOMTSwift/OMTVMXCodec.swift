@@ -3,16 +3,27 @@ import Foundation
 import LibOMTVMXShim
 
 public enum VMXProfile: Int32, Sendable {
-    case `default` = 0
+    case none = 0
+    case `default` = 1
     case lowQuality = 33
     case standardQuality = 66
     case highQuality = 99
     case omtLowQuality = 133
     case omtStandardQuality = 166
     case omtHighQuality = 199
+
+    public static let None = VMXProfile.none
+    public static let Default = VMXProfile.default
+    public static let LQ = VMXProfile.lowQuality
+    public static let SQ = VMXProfile.standardQuality
+    public static let HQ = VMXProfile.highQuality
+    public static let OMT_LQ = VMXProfile.omtLowQuality
+    public static let OMT_SQ = VMXProfile.omtStandardQuality
+    public static let OMT_HQ = VMXProfile.omtHighQuality
 }
 
 public enum VMXImageFormat: Sendable {
+    case none
     case uyvy
     case yuy2
     case nv12
@@ -22,11 +33,27 @@ public enum VMXImageFormat: Sendable {
     case uyva
     case p216
     case pa16
+
+    public static let None = VMXImageFormat.none
+    public static let UYVY = VMXImageFormat.uyvy
+    public static let YUY2 = VMXImageFormat.yuy2
+    public static let NV12 = VMXImageFormat.nv12
+    public static let YV12 = VMXImageFormat.yv12
+    public static let BGRA = VMXImageFormat.bgra
+    public static let BGRX = VMXImageFormat.bgrx
+    public static let UYVA = VMXImageFormat.uyva
+    public static let P216 = VMXImageFormat.p216
+    public static let PA16 = VMXImageFormat.pa16
 }
+
+public typealias VMXImageType = VMXImageFormat
+public typealias VMXColorSpace = OMTColorSpace
+public typealias OMTVMX1Codec = OMTVMXCodec
 
 public final class OMTVMXCodec {
     public let width: Int32
     public let height: Int32
+    public let framesPerSecond: Int32
     public let profile: VMXProfile
     public let colorSpace: OMTColorSpace
 
@@ -36,16 +63,19 @@ public final class OMTVMXCodec {
     public init(
         width: Int32,
         height: Int32,
+        framesPerSecond: Int32 = 0,
         profile: VMXProfile = .default,
         colorSpace: OMTColorSpace = .undefined,
         symbolProvider: VMXSymbolProvider = .process
     ) throws {
         self.width = width
         self.height = height
+        self.framesPerSecond = framesPerSecond
         self.profile = profile
         self.colorSpace = colorSpace
         self.symbols = try VMXSymbols(provider: symbolProvider)
-        guard let instance = symbols.create(width: width, height: height, profile: profile.rawValue, colorSpace: colorSpace.rawValue) else {
+        let createProfile = profile == .default ? VMXProfile.omtStandardQuality : profile
+        guard let instance = symbols.create(width: width, height: height, profile: createProfile.rawValue, colorSpace: colorSpace.rawValue) else {
             throw OMTError.vmxFailure(-1)
         }
         self.instance = instance
@@ -67,6 +97,20 @@ public final class OMTVMXCodec {
         symbols.getEncodedPreviewLength(instance)
     }
 
+    public func getEncodedPreviewLength() -> Int32 {
+        encodedPreviewLength()
+    }
+
+    public func GetEncodedPreviewLength() -> Int32 {
+        encodedPreviewLength()
+    }
+
+    public var Width: Int32 { width }
+    public var Height: Int32 { height }
+    public var FramesPerSecond: Int32 { framesPerSecond }
+    public var Profile: VMXProfile { profile }
+    public var ColorSpace: OMTColorSpace { colorSpace }
+
     public func encode(
         _ format: VMXImageFormat,
         source: Data,
@@ -74,6 +118,7 @@ public final class OMTVMXCodec {
         interlaced: Bool,
         maxOutputLength: Int
     ) throws -> Data {
+        guard format != .none else { return Data() }
         var output = Data(count: maxOutputLength)
         let resultLength = try source.withUnsafeBytes { sourceBytes in
             guard let base = sourceBytes.baseAddress else { throw OMTError.invalidFrameLength }
@@ -87,6 +132,16 @@ public final class OMTVMXCodec {
         return output
     }
 
+    public func Encode(
+        _ imageType: VMXImageType,
+        source: Data,
+        srcStride: Int32,
+        interlaced: Bool,
+        maxOutputLength: Int = OMTConstants.videoMaxSize
+    ) throws -> Data {
+        try encode(imageType, source: source, stride: srcStride, interlaced: interlaced, maxOutputLength: maxOutputLength)
+    }
+
     public func decode(
         _ format: VMXImageFormat,
         compressed: Data,
@@ -94,6 +149,7 @@ public final class OMTVMXCodec {
         outputLength: Int,
         preview: Bool = false
     ) throws -> Data {
+        guard format != .none else { return Data() }
         var output = Data(count: outputLength)
         let loadResult = compressed.withUnsafeBytes { compressedBytes in
             symbols.loadFrom(instance, compressedBytes.bindMemory(to: UInt8.self).baseAddress, Int32(compressed.count))
@@ -108,6 +164,56 @@ public final class OMTVMXCodec {
         return output
     }
 
+    public func Decode(
+        _ imageType: VMXImageType,
+        compressed: Data,
+        stride: Int32,
+        outputLength: Int
+    ) throws -> Data {
+        try decode(imageType, compressed: compressed, stride: stride, outputLength: outputLength)
+    }
+
+    public func DecodePreview(
+        _ imageType: VMXImageType,
+        compressed: Data,
+        stride: Int32,
+        outputLength: Int
+    ) throws -> Data {
+        try decode(imageType, compressed: compressed, stride: stride, outputLength: outputLength, preview: true)
+    }
+
+    public func getPreviewSize(interlaced: Bool) -> OMTSize {
+        var previewWidth = width >> 3
+        var previewHeight = height >> 3
+        if previewWidth % 2 != 0 {
+            previewWidth += 1
+        }
+        if interlaced, previewHeight % 2 != 0 {
+            previewHeight -= 1
+        }
+        return OMTSize(width: previewWidth, height: previewHeight)
+    }
+
+    public func GetPreviewSize(_ interlaced: Bool) -> OMTSize {
+        getPreviewSize(interlaced: interlaced)
+    }
+
+    public func calculatePSNR(_ image1: Data, _ image2: Data, stride: Int32, bytesPerPixel: Int32, size: OMTSize) -> Float {
+        guard image1.count == image2.count, !image1.isEmpty else { return 0 }
+        var sumSquaredError: Double = 0
+        for index in image1.indices {
+            let diff = Double(Int(image1[index]) - Int(image2[index]))
+            sumSquaredError += diff * diff
+        }
+        guard sumSquaredError > 0 else { return Float.infinity }
+        let mse = sumSquaredError / Double(max(1, Int(size.width * size.height * bytesPerPixel)))
+        return Float(10.0 * log10((255.0 * 255.0) / mse))
+    }
+
+    public func CalculatePSNR(_ image1: Data, _ image2: Data, stride: Int32, bytesPerPixel: Int32, size: OMTSize) -> Float {
+        calculatePSNR(image1, image2, stride: stride, bytesPerPixel: bytesPerPixel, size: size)
+    }
+
     private func callEncode(
         _ format: VMXImageFormat,
         sourcePointer: UnsafeMutablePointer<UInt8>,
@@ -116,6 +222,8 @@ public final class OMTVMXCodec {
     ) -> Int32 {
         let interlacedValue: Int32 = interlaced ? 1 : 0
         switch format {
+        case .none:
+            return -2
         case .uyvy:
             return symbols.encodeUYVY(instance, sourcePointer, stride, interlacedValue)
         case .yuy2:
@@ -142,6 +250,8 @@ public final class OMTVMXCodec {
         preview: Bool
     ) -> Int32 {
         switch (format, preview) {
+        case (.none, _):
+            return -2
         case (.uyvy, false):
             return symbols.decodeUYVY(instance, destination, stride)
         case (.uyva, false):
@@ -178,16 +288,15 @@ public enum VMXSymbolProvider: Sendable {
 }
 
 struct VMXSymbols {
-    typealias Destroy = @convention(c) (OpaquePointer?) -> Void
-    typealias SetQuality = @convention(c) (OpaquePointer?, Int32) -> Void
-    typealias GetQuality = @convention(c) (OpaquePointer?) -> Int32
-    typealias LoadFrom = @convention(c) (OpaquePointer?, UnsafePointer<UInt8>?, Int32) -> Int32
-    typealias SaveTo = @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt8>?, Int32) -> Int32
-    typealias Transform = @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt8>?, Int32) -> Int32
-    typealias Encode = @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt8>?, Int32, Int32) -> Int32
-    typealias EncodedPreviewLength = @convention(c) (OpaquePointer?) -> Int32
+    typealias Destroy = (OpaquePointer?) -> Void
+    typealias SetQuality = (OpaquePointer?, Int32) -> Void
+    typealias GetQuality = (OpaquePointer?) -> Int32
+    typealias LoadFrom = (OpaquePointer?, UnsafePointer<UInt8>?, Int32) -> Int32
+    typealias SaveTo = (OpaquePointer?, UnsafeMutablePointer<UInt8>?, Int32) -> Int32
+    typealias Transform = (OpaquePointer?, UnsafeMutablePointer<UInt8>?, Int32) -> Int32
+    typealias Encode = (OpaquePointer?, UnsafeMutablePointer<UInt8>?, Int32, Int32) -> Int32
+    typealias EncodedPreviewLength = (OpaquePointer?) -> Int32
 
-    private let handle: UnsafeMutableRawPointer
     let destroy: Destroy
     let setQuality: SetQuality
     let getQuality: GetQuality
@@ -215,45 +324,36 @@ struct VMXSymbols {
     let getEncodedPreviewLength: EncodedPreviewLength
 
     init(provider: VMXSymbolProvider) throws {
-        let handle: UnsafeMutableRawPointer?
-        switch provider {
-        case .process:
-            handle = OMTSwiftVMXOpen(nil, 0)
-        case .path(let path):
-            handle = path.withCString { OMTSwiftVMXOpen($0, 1) }
-        }
-        guard let handle else { throw OMTError.vmxFailure(-3) }
-        self.handle = handle
-
-        destroy = try Self.load(handle, "VMX_Destroy")
-        setQuality = try Self.load(handle, "VMX_SetQuality")
-        getQuality = try Self.load(handle, "VMX_GetQuality")
-        loadFrom = try Self.load(handle, "VMX_LoadFrom")
-        saveToRaw = try Self.load(handle, "VMX_SaveTo")
-        encodeBGRA = try Self.load(handle, "VMX_EncodeBGRA")
-        encodeBGRX = try Self.load(handle, "VMX_EncodeBGRX")
-        encodeUYVY = try Self.load(handle, "VMX_EncodeUYVY")
-        encodeUYVA = try Self.load(handle, "VMX_EncodeUYVA")
-        encodeYUY2 = try Self.load(handle, "VMX_EncodeYUY2")
-        encodeP216 = try Self.load(handle, "VMX_EncodeP216")
-        encodePA16 = try Self.load(handle, "VMX_EncodePA16")
-        decodeBGRA = try Self.load(handle, "VMX_DecodeBGRA")
-        decodeBGRX = try Self.load(handle, "VMX_DecodeBGRX")
-        decodeUYVY = try Self.load(handle, "VMX_DecodeUYVY")
-        decodeUYVA = try Self.load(handle, "VMX_DecodeUYVA")
-        decodeYUY2 = try Self.load(handle, "VMX_DecodeYUY2")
-        decodeP216 = try Self.load(handle, "VMX_DecodeP216")
-        decodePA16 = try Self.load(handle, "VMX_DecodePA16")
-        decodePreviewBGRA = try Self.load(handle, "VMX_DecodePreviewBGRA")
-        decodePreviewBGRX = try Self.load(handle, "VMX_DecodePreviewBGRX")
-        decodePreviewUYVY = try Self.load(handle, "VMX_DecodePreviewUYVY")
-        decodePreviewUYVA = try Self.load(handle, "VMX_DecodePreviewUYVA")
-        decodePreviewYUY2 = try Self.load(handle, "VMX_DecodePreviewYUY2")
-        getEncodedPreviewLength = try Self.load(handle, "VMX_GetEncodedPreviewLength")
+        _ = provider
+        destroy = { OMTSwiftVMXDestroy(Self.rawPointer($0)) }
+        setQuality = { OMTSwiftVMXSetQuality(Self.rawPointer($0), $1) }
+        getQuality = { OMTSwiftVMXGetQuality(Self.rawPointer($0)) }
+        loadFrom = { OMTSwiftVMXLoadFrom(Self.rawPointer($0), $1, $2) }
+        saveToRaw = { OMTSwiftVMXSaveTo(Self.rawPointer($0), $1, $2) }
+        encodeBGRA = { OMTSwiftVMXEncodeBGRA(Self.rawPointer($0), $1, $2, $3) }
+        encodeBGRX = { OMTSwiftVMXEncodeBGRX(Self.rawPointer($0), $1, $2, $3) }
+        encodeUYVY = { OMTSwiftVMXEncodeUYVY(Self.rawPointer($0), $1, $2, $3) }
+        encodeUYVA = { OMTSwiftVMXEncodeUYVA(Self.rawPointer($0), $1, $2, $3) }
+        encodeYUY2 = { OMTSwiftVMXEncodeYUY2(Self.rawPointer($0), $1, $2, $3) }
+        encodeP216 = { OMTSwiftVMXEncodeP216(Self.rawPointer($0), $1, $2, $3) }
+        encodePA16 = { OMTSwiftVMXEncodePA16(Self.rawPointer($0), $1, $2, $3) }
+        decodeBGRA = { OMTSwiftVMXDecodeBGRA(Self.rawPointer($0), $1, $2) }
+        decodeBGRX = { OMTSwiftVMXDecodeBGRX(Self.rawPointer($0), $1, $2) }
+        decodeUYVY = { OMTSwiftVMXDecodeUYVY(Self.rawPointer($0), $1, $2) }
+        decodeUYVA = { OMTSwiftVMXDecodeUYVA(Self.rawPointer($0), $1, $2) }
+        decodeYUY2 = { OMTSwiftVMXDecodeYUY2(Self.rawPointer($0), $1, $2) }
+        decodeP216 = { OMTSwiftVMXDecodeP216(Self.rawPointer($0), $1, $2) }
+        decodePA16 = { OMTSwiftVMXDecodePA16(Self.rawPointer($0), $1, $2) }
+        decodePreviewBGRA = { OMTSwiftVMXDecodePreviewBGRA(Self.rawPointer($0), $1, $2) }
+        decodePreviewBGRX = { OMTSwiftVMXDecodePreviewBGRX(Self.rawPointer($0), $1, $2) }
+        decodePreviewUYVY = { OMTSwiftVMXDecodePreviewUYVY(Self.rawPointer($0), $1, $2) }
+        decodePreviewUYVA = { OMTSwiftVMXDecodePreviewUYVA(Self.rawPointer($0), $1, $2) }
+        decodePreviewYUY2 = { OMTSwiftVMXDecodePreviewYUY2(Self.rawPointer($0), $1, $2) }
+        getEncodedPreviewLength = { OMTSwiftVMXGetEncodedPreviewLength(Self.rawPointer($0)) }
     }
 
     func create(width: Int32, height: Int32, profile: Int32, colorSpace: Int32) -> OpaquePointer? {
-        guard let pointer = OMTSwiftVMXCreate(handle, width, height, profile, colorSpace) else {
+        guard let pointer = OMTSwiftVMXCreate(width, height, profile, colorSpace) else {
             return nil
         }
         return OpaquePointer(pointer)
@@ -265,10 +365,7 @@ struct VMXSymbols {
         }
     }
 
-    private static func load<T>(_ handle: UnsafeMutableRawPointer, _ name: String) throws -> T {
-        guard let symbol = dlsym(handle, name) else {
-            throw OMTError.vmxFailure(-4)
-        }
-        return unsafeBitCast(symbol, to: T.self)
+    private static func rawPointer(_ pointer: OpaquePointer?) -> UnsafeMutableRawPointer? {
+        pointer.map { UnsafeMutableRawPointer($0) }
     }
 }

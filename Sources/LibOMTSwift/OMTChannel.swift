@@ -79,7 +79,7 @@ final class OMTChannel {
             return 0
         }
 
-        let encoded = try frame.encoded()
+        let encoded = try frame.encoded(preview: previewRequested)
         connection.send(content: encoded, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
             if let error {
@@ -138,7 +138,9 @@ final class OMTChannel {
 
     private func processReceiveBuffer() {
         while receiveBuffer.count >= OMTFrame.headerLength {
-            let dataLength = Int(Int32(littleEndianBytes: receiveBuffer[12..<16]))
+            guard let dataLength = receiveBuffer.int32LittleEndian(at: 12).map(Int.init) else {
+                return
+            }
             guard dataLength >= 0 else {
                 close()
                 return
@@ -147,8 +149,9 @@ final class OMTChannel {
             let totalLength = OMTFrame.headerLength + dataLength
             guard receiveBuffer.count >= totalLength else { return }
 
-            let frameData = Data(receiveBuffer.prefix(totalLength))
-            receiveBuffer.removeFirst(totalLength)
+            let frameEnd = receiveBuffer.index(receiveBuffer.startIndex, offsetBy: totalLength)
+            let frameData = Data(receiveBuffer[receiveBuffer.startIndex..<frameEnd])
+            receiveBuffer.removeSubrange(receiveBuffer.startIndex..<frameEnd)
 
             do {
                 let frame = try OMTFrame.decode(frameData)
@@ -187,13 +190,13 @@ final class OMTChannel {
     }
 }
 
-private extension Int32 {
-    init(littleEndianBytes bytes: Data.SubSequence) {
-        var value: UInt32 = 0
-        for (index, byte) in bytes.enumerated() {
-            value |= UInt32(byte) << UInt32(index * 8)
+private extension Data {
+    func int32LittleEndian(at byteOffset: Int) -> Int32? {
+        guard byteOffset >= 0, count >= byteOffset + MemoryLayout<Int32>.size else { return nil }
+        return withUnsafeBytes { rawBuffer in
+            let value = rawBuffer.loadUnaligned(fromByteOffset: byteOffset, as: UInt32.self)
+            return Int32(bitPattern: UInt32(littleEndian: value))
         }
-        self = Int32(bitPattern: value)
     }
 }
 

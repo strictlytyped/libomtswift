@@ -4,6 +4,9 @@ public struct OMTFrame: Equatable, Sendable {
     public static let headerLength = 16
     public static let videoExtendedHeaderLength = 32
     public static let audioExtendedHeaderLength = 24
+    public static let HeaderLength = headerLength
+    public static let ExtendedHeaderVideo = videoExtendedHeaderLength
+    public static let ExtendedHeaderAudio = audioExtendedHeaderLength
 
     public var frameType: OMTFrameType
     public var timestamp: Int64
@@ -47,6 +50,19 @@ public struct OMTFrame: Equatable, Sendable {
         return 0
     }
 
+    public var HeaderLength: Int { Self.headerLength }
+    public var ExtendedHeaderLength: Int { extendedHeaderLength }
+    public var Length: Int { encodedLength }
+    public var FrameType: OMTFrameType {
+        get { frameType }
+        set { frameType = newValue }
+    }
+    public var Timestamp: Int64 {
+        get { timestamp }
+        set { timestamp = newValue }
+    }
+    public var MetadataLength: Int { metadataData.count }
+
     public var metadataData: Data {
         guard let metadata else { return Data() }
         var data = Data(metadata.utf8)
@@ -55,13 +71,17 @@ public struct OMTFrame: Equatable, Sendable {
     }
 
     public var encodedLength: Int {
-        Self.headerLength + encodedDataLength
+        Self.headerLength + encodedDataLength(preview: false)
     }
 
-    private var encodedDataLength: Int {
+    public func encodedLength(preview: Bool) -> Int {
+        Self.headerLength + encodedDataLength(preview: preview)
+    }
+
+    private func encodedDataLength(preview: Bool) -> Int {
         let payload = encodedPayload
         let metadataData = frameType == .metadata ? Data() : metadataData
-        if let previewPayloadLength {
+        if preview, let previewPayloadLength {
             return extendedHeaderLength + min(previewPayloadLength, payload.count) + metadataData.count
         }
         return extendedHeaderLength + payload.count + metadataData.count
@@ -76,7 +96,7 @@ public struct OMTFrame: Equatable, Sendable {
         return payload
     }
 
-    public func encoded() throws -> Data {
+    public func encoded(preview: Bool = false) throws -> Data {
         if frameType.contains(.video), videoFormat == nil {
             throw OMTError.invalidFrameLength
         }
@@ -86,7 +106,8 @@ public struct OMTFrame: Equatable, Sendable {
 
         let payload = encodedPayload
         let metadataData = frameType == .metadata ? Data() : metadataData
-        let payloadLength = previewPayloadLength.map { min($0, payload.count) } ?? payload.count
+        let usePreview = preview && previewPayloadLength != nil
+        let payloadLength = usePreview ? min(previewPayloadLength ?? payload.count, payload.count) : payload.count
         var writer = OMTBinaryWriter(capacity: Self.headerLength + extendedHeaderLength + payloadLength + metadataData.count)
         writer.writeUInt8(1)
         writer.writeUInt8(frameType.rawValue)
@@ -95,7 +116,7 @@ public struct OMTFrame: Equatable, Sendable {
         writer.writeInt32(Int32(extendedHeaderLength + payloadLength + metadataData.count))
 
         if var videoFormat {
-            if previewPayloadLength != nil {
+            if usePreview {
                 videoFormat.flags.insert(.preview)
             }
             writer.writeInt32(videoFormat.codec.rawValue)
@@ -118,6 +139,10 @@ public struct OMTFrame: Equatable, Sendable {
         writer.writeData(payload.prefix(payloadLength))
         writer.writeData(metadataData)
         return writer.data
+    }
+
+    public func Encoded() throws -> Data {
+        try encoded()
     }
 
     public static func decode(_ data: Data) throws -> OMTFrame {
@@ -212,5 +237,9 @@ public struct OMTFrame: Equatable, Sendable {
             metadata: metadata,
             previewPayloadLength: videoFormat?.flags.contains(.preview) == true ? payloadLength : nil
         )
+    }
+
+    public static func Decode(_ data: Data) throws -> OMTFrame {
+        try decode(data)
     }
 }

@@ -5,11 +5,15 @@ Native Swift implementation of the [Open Media Transport](https://openmediatrans
 ## What is included
 
 - `OMTSender` and `OMTReceiver` built on `Network.framework`.
-- Bonjour discovery for `_omt._tcp.` services.
-- OMT binary frame encode/decode, including attached video/audio metadata.
-- Metadata controls for subscriptions, preview mode, tally, sender information, redirects, and suggested quality.
-- VMX1 video encode/decode through `libvmx` symbols already linked into the process.
+- Callback and `AsyncStream` receive APIs.
+- Bonjour discovery for `_omt._tcp.` services and helpers for OMT names, URLs, and address XML.
+- OMT binary frame encode/decode, including attached video/audio metadata and preview payloads.
+- Metadata helpers for subscriptions, preview mode, tally, sender information, redirects, and suggested quality.
+- Sender and receiver control helpers for tally, quality, redirects, connection metadata, sender information, and statistics.
+- VMX1 video encode/decode through the local `LibVMX.xcframework` and C++ shim.
 - FPA1 planar float audio compaction/expansion.
+- Swift-first names plus compatibility aliases for the C# OMT API, including `OMTSend`, `OMTReceive`, PascalCase properties, and PascalCase enum cases.
+- Utility helpers for frame-rate conversion, UTF-8 metadata, planar audio conversion, timestamps, preview sizing, and PSNR calculation.
 
 ## Usage
 
@@ -45,6 +49,29 @@ receiver.onFrame = { frame in
 
 `OMTSender` accepts raw UYVY/YUY2/BGRA/UYVA/P216/PA16 frames and encodes them to VMX1 before transport. If the frame is already `.vmx1`, it is sent as-is.
 
+The package also exposes compatibility names when porting code from the C# library:
+
+```swift
+let receiver = try OMTReceive(
+    "omt://camera.local:6400",
+    frameTypes: OMTFrameType.Video,
+    format: OMTPreferredVideoFormat.UYVYorBGRA,
+    flags: [OMTReceiveFlags.IncludeCompressed]
+)
+
+receiver.SetTally(OMTTally(preview: 1, program: 0))
+let stats = receiver.GetVideoStatistics()
+print(receiver.Address, stats.Frames)
+```
+
+Set an `OMTMediaFrame` timestamp to `-1` to have the sender fill it from `OMTClock`.
+
 ## VMX linking
 
-The Swift package does not hard-link `libvmx`; it resolves `VMX_*` symbols dynamically from the process by default. If needed, pass `.path(...)` to `OMTSender` or `OMTReceiver` to load a specific library image.
+The Swift package links VMX through `LibVMX`, a binary target expected at:
+
+```text
+../libvmx/build/LibVMX.xcframework
+```
+
+Build or provide that XCFramework before building `libomtswift`. `LibOMTVMXShim` is a C++ target that wraps the VMX C++ headers in a Swift-friendly C ABI.
