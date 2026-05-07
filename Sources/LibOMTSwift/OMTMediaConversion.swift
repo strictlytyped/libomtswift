@@ -93,8 +93,13 @@ func omtVideoPayloadLength(codec: OMTCodec, width: Int32, height: Int32, stride:
 }
 
 func omtPreviewSize(width: Int32, height: Int32, interlaced: Bool) -> (width: Int32, height: Int32) {
-    let previewWidth = max(1, width / 8)
-    let divisor: Int32 = interlaced ? 4 : 8
-    let previewHeight = max(1, height / divisor)
+    var previewWidth = max(1, width / 8)
+    var previewHeight = max(1, height / 8)
+    if previewWidth % 2 != 0 {
+        previewWidth += 1
+    }
+    if interlaced, previewHeight % 2 != 0 {
+        previewHeight = max(1, previewHeight - 1)
+    }
     return (previewWidth, previewHeight)
 }

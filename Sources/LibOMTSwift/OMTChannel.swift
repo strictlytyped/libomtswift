@@ -16,6 +16,7 @@ final class OMTChannel {
     private var receiveBuffer = Data()
     private var metadataState = OMTMetadataState()
     private var closed = false
+    private var ready = false
     private var stats = OMTStatistics()
 
     init(connection: NWConnection, receiveFrameType: OMTFrameType, queue: DispatchQueue) {
@@ -26,6 +27,10 @@ final class OMTChannel {
 
     var statistics: OMTStatistics {
         lock.withLock { stats }
+    }
+
+    var isConnected: Bool {
+        lock.withLock { ready && !closed }
     }
 
     var senderInfo: OMTSenderInfo? {
@@ -53,8 +58,12 @@ final class OMTChannel {
             guard let self else { return }
             switch state {
             case .ready:
+                self.lock.withLock { self.ready = true }
                 self.onReady?()
                 self.receiveLoop()
+            case .waiting(let error):
+                self.onError?(error)
+                self.close()
             case .failed(let error):
                 self.onError?(error)
                 self.close()
@@ -101,6 +110,7 @@ final class OMTChannel {
         let shouldClose = lock.withLock { () -> Bool in
             if closed { return false }
             closed = true
+            ready = false
             return true
         }
         guard shouldClose else { return }

@@ -11,7 +11,7 @@ public final class OMTReceiver {
     public private(set) var redirectAddress: String?
     public private(set) var senderInfo: OMTSenderInfo?
     public var isConnected: Bool {
-        lock.withLock { videoChannel != nil || audioChannel != nil }
+        lock.withLock { isConnectedLocked() }
     }
 
     public var Address: String { address.url }
@@ -30,6 +30,10 @@ public final class OMTReceiver {
     private var videoCodecKey: OMTVideoCodecKey?
     private var tally = OMTTally()
     private var suggestedQuality = OMTQuality.default
+    private var closed = false
+    private var lastBeginConnect = Date.distantPast
+    private var reconnectWorkItem: DispatchWorkItem?
+    private let reconnectInterval: TimeInterval = 1.0
 
     public convenience init(
         url: String,
@@ -89,7 +93,10 @@ public final class OMTReceiver {
 
     public func close() {
         frameContinuation.finish()
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
         let current = lock.withLock { () -> [OMTChannel] in
+            closed = true
             let current = [videoChannel, audioChannel].compactMap { $0 }
             videoChannel = nil
             audioChannel = nil
@@ -108,6 +115,14 @@ public final class OMTReceiver {
 
     public func IsConnected() -> Bool {
         isConnected
+    }
+
+    public func checkConnection() {
+        beginConnect()
+    }
+
+    public func CheckConnection() {
+        checkConnection()
     }
 
     public func setTally(_ tally: OMTTally) {
@@ -145,6 +160,7 @@ public final class OMTReceiver {
 
     @discardableResult
     public func sendMetadata(_ metadata: OMTMetadata) -> Int {
+        checkConnection()
         do {
             return try controlChannel()?.sendMetadataXML(metadata.xml, timestamp: metadata.timestamp) ?? 0
         } catch {
@@ -175,7 +191,8 @@ public final class OMTReceiver {
     }
 
     public func getRemoteEndpoint() -> (host: String, port: Int) {
-        (address.host ?? address.machineName, address.port)
+        let current = resolvedAddress()
+        return (current.host ?? current.machineName, current.port)
     }
 
     public func GetRemoteEndPoint() -> (host: String, port: Int) {
@@ -199,18 +216,64 @@ public final class OMTReceiver {
     }
 
     private func connect() {
-        closeExistingChannels()
+        beginConnect(force: true)
+    }
+
+    private func beginConnect(force: Bool = false) {
+        let targetAddress = resolvedAddress()
+        let now = Date()
+        let connectionPlan = lock.withLock { () -> (current: [OMTChannel], shouldStart: Bool) in
+            guard !closed else { return ([], false) }
+            if !force, isConnectedLocked() || hasPendingRequiredChannelsLocked() {
+                return ([], false)
+            }
+
+            let elapsed = now.timeIntervalSince(lastBeginConnect)
+            if !force, elapsed < reconnectInterval {
+                scheduleReconnectLocked(after: reconnectInterval - elapsed)
+                return ([], false)
+            }
+
+            reconnectWorkItem?.cancel()
+            reconnectWorkItem = nil
+            lastBeginConnect = now
+            let current = [videoChannel, audioChannel].compactMap { $0 }
+            videoChannel = nil
+            audioChannel = nil
+            return (current, true)
+        }
+        guard connectionPlan.shouldStart else { return }
+        connectionPlan.current.forEach { $0.close() }
+
+        let newVideoChannel: OMTChannel?
+        let newAudioChannel: OMTChannel?
         if frameTypes.contains(.video) {
-            videoChannel = makeChannel(type: .video)
+            newVideoChannel = makeChannel(type: .video, address: targetAddress)
+        } else if frameTypes == .metadata {
+            newVideoChannel = makeChannel(type: .metadata, address: targetAddress)
+        } else {
+            newVideoChannel = nil
         }
         if frameTypes.contains(.audio) {
-            audioChannel = makeChannel(type: .audio)
+            newAudioChannel = makeChannel(type: .audio, address: targetAddress)
+        } else {
+            newAudioChannel = nil
         }
-        if frameTypes == .metadata {
-            videoChannel = makeChannel(type: .metadata)
+
+        let channelsToClose = lock.withLock { () -> [OMTChannel] in
+            guard !closed else {
+                return [newVideoChannel, newAudioChannel].compactMap { $0 }
+            }
+            videoChannel = newVideoChannel
+            audioChannel = newAudioChannel
+            if !hasPendingRequiredChannelsLocked() {
+                scheduleReconnectLocked(after: reconnectInterval)
+            }
+            return []
         }
-        videoChannel?.start()
-        audioChannel?.start()
+        channelsToClose.forEach { $0.close() }
+        newVideoChannel?.start()
+        newAudioChannel?.start()
     }
 
     private func closeExistingChannels() {
@@ -223,7 +286,7 @@ public final class OMTReceiver {
         current.forEach { $0.close() }
     }
 
-    private func makeChannel(type: OMTFrameType) -> OMTChannel? {
+    private func makeChannel(type: OMTFrameType, address: OMTAddress) -> OMTChannel? {
         let host = address.host ?? address.machineName
         do {
             let connection = NWConnection(
@@ -255,6 +318,52 @@ public final class OMTReceiver {
         }
     }
 
+    private func resolvedAddress() -> OMTAddress {
+        if let redirectAddress, !redirectAddress.isEmpty {
+            if let parsed = OMTAddress.parseURL(redirectAddress) {
+                return parsed
+            }
+            if let discovered = OMTDiscovery.shared.find(redirectAddress) {
+                return discovered
+            }
+        }
+        if let discovered = OMTDiscovery.shared.find(address.fullName), !discovered.removed {
+            return discovered
+        }
+        return address
+    }
+
+    private func isConnectedLocked() -> Bool {
+        if frameTypes.isEmpty { return true }
+        if frameTypes.contains(.video) || frameTypes == .metadata {
+            guard videoChannel?.isConnected == true else { return false }
+        }
+        if frameTypes.contains(.audio) {
+            guard audioChannel?.isConnected == true else { return false }
+        }
+        return true
+    }
+
+    private func hasPendingRequiredChannelsLocked() -> Bool {
+        if frameTypes.isEmpty { return true }
+        if frameTypes.contains(.video) || frameTypes == .metadata {
+            guard videoChannel != nil else { return false }
+        }
+        if frameTypes.contains(.audio) {
+            guard audioChannel != nil else { return false }
+        }
+        return true
+    }
+
+    private func scheduleReconnectLocked(after delay: TimeInterval) {
+        guard !closed, reconnectWorkItem == nil else { return }
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.beginConnect()
+        }
+        reconnectWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + max(0, delay), execute: workItem)
+    }
+
     private func subscribe(_ channel: OMTChannel, type: OMTFrameType) {
         do {
             if type == .video {
@@ -279,9 +388,13 @@ public final class OMTReceiver {
     }
 
     private func remove(_ channel: OMTChannel) {
-        lock.withLock {
+        let shouldReconnect = lock.withLock { () -> Bool in
             if videoChannel === channel { videoChannel = nil }
             if audioChannel === channel { audioChannel = nil }
+            return !closed && !isConnectedLocked()
+        }
+        if shouldReconnect {
+            beginConnect()
         }
     }
 
@@ -292,6 +405,7 @@ public final class OMTReceiver {
     }
 
     private func sendControl(_ xml: String) {
+        checkConnection()
         do {
             try controlChannel()?.sendMetadataXML(xml)
         } catch {
@@ -303,7 +417,11 @@ public final class OMTReceiver {
         if metadata.xml.hasPrefix("<OMTInfo") {
             senderInfo = OMTSenderInfo(xml: metadata.xml)
         } else if metadata.xml.hasPrefix("<OMTRedirect") {
-            redirectAddress = metadata.xml.omtXMLAttribute("Address")
+            let newAddress = metadata.xml.omtXMLAttribute("Address")
+            if redirectAddress != newAddress {
+                redirectAddress = newAddress
+                beginConnect(force: true)
+            }
         }
         let mediaFrame = OMTMediaFrame(type: .metadata, timestamp: metadata.timestamp, codec: .fpa1, data: Data(metadata.xml.utf8), frameMetadata: metadata.xml)
         frameContinuation.yield(mediaFrame)

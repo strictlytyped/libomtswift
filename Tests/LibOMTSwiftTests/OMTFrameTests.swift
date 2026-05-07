@@ -10,7 +10,7 @@ final class OMTFrameTests: XCTestCase {
         XCTAssertEqual(decoded.frameType, .metadata)
         XCTAssertEqual(decoded.timestamp, 42)
         XCTAssertEqual(decoded.metadata, OMTMetadataCommand.subscribeVideo)
-        XCTAssertEqual(decoded.payload.last, 0)
+        XCTAssertEqual(decoded.payload, Data(OMTMetadataCommand.subscribeVideo.utf8))
 
         let headerMetadataLength = UInt16(encoded[10]) | (UInt16(encoded[11]) << 8)
         XCTAssertEqual(headerMetadataLength, 0)
@@ -74,5 +74,19 @@ final class OMTFrameTests: XCTestCase {
         XCTAssertEqual(previewFrame.videoFormat?.height, 1080)
         XCTAssertEqual(previewFrame.videoFormat?.flags.contains(.preview), true)
         XCTAssertEqual(previewFrame.payload, payload.prefix(16))
+    }
+
+    func testPreviewSizeMatchesVMXPreviewDecodeSize() {
+        let progressiveSize = omtPreviewSize(width: 1920, height: 1080, interlaced: false)
+        XCTAssertEqual(progressiveSize.width, 240)
+        XCTAssertEqual(progressiveSize.height, 135)
+
+        let interlacedSize = omtPreviewSize(width: 1920, height: 1080, interlaced: true)
+        XCTAssertEqual(interlacedSize.width, 240)
+        XCTAssertEqual(interlacedSize.height, 134)
+
+        let oddWidthSize = omtPreviewSize(width: 1928, height: 1080, interlaced: false)
+        XCTAssertEqual(oddWidthSize.width, 242)
+        XCTAssertEqual(oddWidthSize.height, 135)
     }
 }
