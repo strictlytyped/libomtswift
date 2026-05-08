@@ -25,7 +25,9 @@ public final class OMTSender {
         set { quality = newValue }
     }
 
-    private let queue = DispatchQueue(label: "com.strictly.omtswift.sender")
+    private static let listenerStartTimeout: TimeInterval = 1.0
+
+    private let queue = DispatchQueue(label: "dev.strictlytyped.omtswift.sender")
     private let lock = NSLock()
     private let listener: NWListener
     private let vmxSymbolProvider: VMXSymbolProvider
@@ -50,12 +52,12 @@ public final class OMTSender {
         self.configuredQuality = quality
         self.vmxSymbolProvider = vmxSymbolProvider
 
-        var selectedListener: NWListener?
+        var selectedListener: ReadyListener?
         var selectedPort = 0
         var lastError: Error?
         for port in portRange {
             do {
-                selectedListener = try NWListener(using: omtTCPParameters(), on: NWEndpoint.Port(omtPort: port))
+                selectedListener = try Self.makeReadyListener(on: port)
                 selectedPort = port
                 break
             } catch {
@@ -67,7 +69,7 @@ public final class OMTSender {
             throw lastError ?? OMTError.invalidAddress("No available OMT port in \(portRange)")
         }
 
-        self.listener = selectedListener
+        self.listener = selectedListener.listener
         self.address = OMTAddress(name: name, port: selectedPort, host: ProcessInfo.processInfo.hostName)
 
         listener.newConnectionHandler = { [weak self] connection in
@@ -78,11 +80,66 @@ public final class OMTSender {
                 self?.onError?(error)
             }
         }
-        listener.start(queue: queue)
 
         let service = NetService(domain: "local.", type: OMTConstants.serviceType, name: address.fullName, port: Int32(selectedPort))
         service.publish()
         self.netService = service
+    }
+
+    private struct ReadyListener {
+        let listener: NWListener
+    }
+
+    private static func makeReadyListener(on port: Int) throws -> ReadyListener {
+        let listener = try NWListener(using: omtTCPParameters(), on: NWEndpoint.Port(omtPort: port))
+        let semaphore = DispatchSemaphore(value: 0)
+        let queue = DispatchQueue(label: "dev.strictlytyped.omtswift.sender.bind.\(port)")
+        let lock = NSLock()
+        var startupError: Error?
+        var isReady = false
+
+        listener.newConnectionHandler = { connection in
+            connection.cancel()
+        }
+        listener.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                lock.withLock {
+                    isReady = true
+                }
+                semaphore.signal()
+            case .failed(let error):
+                lock.withLock {
+                    startupError = error
+                }
+                semaphore.signal()
+            case .cancelled:
+                semaphore.signal()
+            default:
+                break
+            }
+        }
+        listener.start(queue: queue)
+
+        let waitResult = semaphore.wait(timeout: .now() + listenerStartTimeout)
+        let result = lock.withLock { () -> (Bool, Error?) in
+            (isReady, startupError)
+        }
+
+        if result.0 {
+            listener.stateUpdateHandler = nil
+            return ReadyListener(listener: listener)
+        }
+
+        listener.cancel()
+
+        if let error = result.1 {
+            throw error
+        }
+        if waitResult == .timedOut {
+            throw OMTError.invalidAddress("Timed out binding OMT TCP port \(port)")
+        }
+        throw OMTError.invalidAddress("Unable to bind OMT TCP port \(port)")
     }
 
     deinit {

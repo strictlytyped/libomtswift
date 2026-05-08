@@ -1,3 +1,4 @@
+import Network
 import XCTest
 @testable import LibOMTSwift
 
@@ -140,6 +141,46 @@ final class OMTLoopbackTests: XCTestCase {
         XCTAssertEqual(receivedVideoFrame?.height, Int32(height))
         XCTAssertEqual(receivedVideoFrame?.codec, .uyvy)
         XCTAssertEqual(receivedVideoFrame?.data.count, width * height * 2)
+    }
+
+    func testSenderSkipsPortThatFailsAfterListenerStart() throws {
+        let occupiedPort = 6570
+        let occupiedListener = try NWListener(using: omtTCPParameters(), on: NWEndpoint.Port(omtPort: occupiedPort))
+        let ready = expectation(description: "occupied listener ready")
+        var listenerError: Error?
+
+        occupiedListener.newConnectionHandler = { connection in
+            connection.cancel()
+        }
+        occupiedListener.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                ready.fulfill()
+            case .failed(let error):
+                listenerError = error
+                ready.fulfill()
+            default:
+                break
+            }
+        }
+        occupiedListener.start(queue: DispatchQueue(label: "dev.strictlytyped.omtswift.tests.occupied-port"))
+        wait(for: [ready], timeout: 2)
+
+        if let listenerError {
+            occupiedListener.cancel()
+            throw XCTSkip("OMT loopback port \(occupiedPort) unavailable: \(listenerError)")
+        }
+        defer { occupiedListener.cancel() }
+
+        let portRange = occupiedPort...(occupiedPort + 5)
+        let sender = try OMTSender(
+            name: "OccupiedPortLoopback",
+            portRange: portRange
+        )
+        defer { sender.stop() }
+
+        XCTAssertNotEqual(sender.port, occupiedPort)
+        XCTAssertTrue(portRange.contains(sender.port))
     }
 
     func testReceiverCheckConnectionReconnectsAfterInitialFailure() throws {

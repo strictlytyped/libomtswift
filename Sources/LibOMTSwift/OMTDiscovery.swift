@@ -6,7 +6,7 @@ public final class OMTDiscovery: NSObject {
     public var onUpdate: (([OMTAddress]) -> Void)?
 
     private let browser = NetServiceBrowser()
-    private let queue = DispatchQueue(label: "com.strictly.omtswift.discovery")
+    private let queue = DispatchQueue(label: "dev.strictlytyped.omtswift.discovery")
     private var services: [String: NetService] = [:]
     private var resolvedAddresses: [String: OMTAddress] = [:]
 

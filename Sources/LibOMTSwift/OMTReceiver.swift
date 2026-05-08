@@ -17,7 +17,7 @@ public final class OMTReceiver {
     public var Address: String { address.url }
     public var RedirectAddress: String? { redirectAddress }
 
-    private let queue = DispatchQueue(label: "com.strictly.omtswift.receiver")
+    private let queue = DispatchQueue(label: "dev.strictlytyped.omtswift.receiver")
     private let lock = NSLock()
     private let frameContinuation: AsyncStream<OMTMediaFrame>.Continuation
     private let preferredVideoFormat: OMTPreferredVideoFormat
@@ -77,7 +77,7 @@ public final class OMTReceiver {
         vmxSymbolProvider: VMXSymbolProvider = .process
     ) throws {
         var continuation: AsyncStream<OMTMediaFrame>.Continuation!
-        self.frames = AsyncStream { continuation = $0 }
+        self.frames = AsyncStream(bufferingPolicy: .bufferingNewest(3)) { continuation = $0 }
         self.frameContinuation = continuation
         self.address = address
         self.frameTypes = frameTypes
