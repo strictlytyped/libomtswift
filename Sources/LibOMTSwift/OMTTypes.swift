@@ -25,11 +25,6 @@ public struct OMTConstants {
     public static let serviceType = "_omt._tcp."
 }
 
-public enum OMTPublicConstants {
-    public static let discoveryServerDefaultPort = OMTConstants.discoveryServerDefaultPort
-    public static let DISCOVERY_SERVER_DEFAULT_PORT = OMTConstants.discoveryServerDefaultPort
-}
-
 public struct OMTFrameType: OptionSet, Sendable {
     public let rawValue: UInt8
 
@@ -41,11 +36,6 @@ public struct OMTFrameType: OptionSet, Sendable {
     public static let metadata = OMTFrameType(rawValue: 1)
     public static let video = OMTFrameType(rawValue: 2)
     public static let audio = OMTFrameType(rawValue: 4)
-
-    public static let None = none
-    public static let Metadata = metadata
-    public static let Video = video
-    public static let Audio = audio
 }
 
 public struct OMTVideoFlags: OptionSet, Sendable {
@@ -61,13 +51,6 @@ public struct OMTVideoFlags: OptionSet, Sendable {
     public static let preMultiplied = OMTVideoFlags(rawValue: 4)
     public static let preview = OMTVideoFlags(rawValue: 8)
     public static let highBitDepth = OMTVideoFlags(rawValue: 16)
-
-    public static let None = none
-    public static let Interlaced = interlaced
-    public static let Alpha = alpha
-    public static let PreMultiplied = preMultiplied
-    public static let Preview = preview
-    public static let HighBitDepth = highBitDepth
 }
 
 public enum OMTCodec: Int32, Sendable {
@@ -81,17 +64,6 @@ public enum OMTCodec: Int32, Sendable {
     case uyva = 0x4156_5955
     case p216 = 0x3631_3250
     case pa16 = 0x3631_4150
-
-    public static let VMX1 = OMTCodec.vmx1
-    public static let FPA1 = OMTCodec.fpa1
-    public static let UYVY = OMTCodec.uyvy
-    public static let YUY2 = OMTCodec.yuy2
-    public static let BGRA = OMTCodec.bgra
-    public static let NV12 = OMTCodec.nv12
-    public static let YV12 = OMTCodec.yv12
-    public static let UYVA = OMTCodec.uyva
-    public static let P216 = OMTCodec.p216
-    public static let PA16 = OMTCodec.pa16
 }
 
 public enum OMTPlatformType: Int, Sendable {
@@ -100,21 +72,12 @@ public enum OMTPlatformType: Int, Sendable {
     case macOS = 2
     case linux = 3
     case iOS = 4
-
-    public static let Unknown = OMTPlatformType.unknown
-    public static let Win32 = OMTPlatformType.win32
-    public static let MacOS = OMTPlatformType.macOS
-    public static let Linux = OMTPlatformType.linux
 }
 
 public enum OMTColorSpace: Int32, Sendable {
     case undefined = 0
     case bt601 = 601
     case bt709 = 709
-
-    public static let Undefined = OMTColorSpace.undefined
-    public static let BT601 = OMTColorSpace.bt601
-    public static let BT709 = OMTColorSpace.bt709
 }
 
 public enum OMTPreferredVideoFormat: Int, Sendable {
@@ -124,13 +87,6 @@ public enum OMTPreferredVideoFormat: Int, Sendable {
     case uyvyOrUYVA = 3
     case uyvyOrUYVAOrP216OrPA16 = 4
     case p216 = 5
-
-    public static let UYVY = OMTPreferredVideoFormat.uyvy
-    public static let UYVYorBGRA = OMTPreferredVideoFormat.uyvyOrBGRA
-    public static let BGRA = OMTPreferredVideoFormat.bgra
-    public static let UYVYorUYVA = OMTPreferredVideoFormat.uyvyOrUYVA
-    public static let UYVYorUYVAorP216orPA16 = OMTPreferredVideoFormat.uyvyOrUYVAOrP216OrPA16
-    public static let P216 = OMTPreferredVideoFormat.p216
 }
 
 public struct OMTReceiveFlags: OptionSet, Sendable {
@@ -144,11 +100,6 @@ public struct OMTReceiveFlags: OptionSet, Sendable {
     public static let preview = OMTReceiveFlags(rawValue: 1)
     public static let includeCompressed = OMTReceiveFlags(rawValue: 2)
     public static let compressedOnly = OMTReceiveFlags(rawValue: 4)
-
-    public static let None = none
-    public static let Preview = preview
-    public static let IncludeCompressed = includeCompressed
-    public static let CompressedOnly = compressedOnly
 }
 
 public enum OMTQuality: Int, Sendable {
@@ -169,11 +120,6 @@ public enum OMTQuality: Int, Sendable {
             return "High"
         }
     }
-
-    public static let Default = OMTQuality.default
-    public static let Low = OMTQuality.low
-    public static let Medium = OMTQuality.medium
-    public static let High = OMTQuality.high
 }
 
 public struct OMTStatistics: Equatable, Sendable {
@@ -207,51 +153,6 @@ public struct OMTStatistics: Equatable, Sendable {
         self.framesDropped = framesDropped
         self.codecTime = codecTime
         self.codecTimeSinceLast = codecTimeSinceLast
-    }
-
-    public var BytesSent: Int64 {
-        get { bytesSent }
-        set { bytesSent = newValue }
-    }
-
-    public var BytesReceived: Int64 {
-        get { bytesReceived }
-        set { bytesReceived = newValue }
-    }
-
-    public var BytesSentSinceLast: Int64 {
-        get { bytesSentSinceLast }
-        set { bytesSentSinceLast = newValue }
-    }
-
-    public var BytesReceivedSinceLast: Int64 {
-        get { bytesReceivedSinceLast }
-        set { bytesReceivedSinceLast = newValue }
-    }
-
-    public var Frames: Int64 {
-        get { frames }
-        set { frames = newValue }
-    }
-
-    public var FramesSinceLast: Int64 {
-        get { framesSinceLast }
-        set { framesSinceLast = newValue }
-    }
-
-    public var FramesDropped: Int64 {
-        get { framesDropped }
-        set { framesDropped = newValue }
-    }
-
-    public var CodecTime: Int64 {
-        get { codecTime }
-        set { codecTime = newValue }
-    }
-
-    public var CodecTimeSinceLast: Int64 {
-        get { codecTimeSinceLast }
-        set { codecTimeSinceLast = newValue }
     }
 }
 
@@ -319,16 +220,6 @@ public struct OMTSize: Equatable, Sendable {
         self.width = width
         self.height = height
     }
-
-    public var Width: Int32 {
-        get { width }
-        set { width = newValue }
-    }
-
-    public var Height: Int32 {
-        get { height }
-        set { height = newValue }
-    }
 }
 
 public struct OMTMetadata: Equatable, Sendable {
@@ -338,16 +229,6 @@ public struct OMTMetadata: Equatable, Sendable {
     public init(timestamp: Int64 = 0, xml: String) {
         self.timestamp = timestamp
         self.xml = xml
-    }
-
-    public var Timestamp: Int64 {
-        get { timestamp }
-        set { timestamp = newValue }
-    }
-
-    public var XML: String {
-        get { xml }
-        set { xml = newValue }
     }
 }
 
@@ -365,21 +246,11 @@ public struct OMTTally: Equatable, Sendable, CustomStringConvertible {
         self.program = program != 0
     }
 
-    public var Preview: Int {
-        get { preview ? 1 : 0 }
-        set { preview = newValue != 0 }
-    }
-
-    public var Program: Int {
-        get { program ? 1 : 0 }
-        set { program = newValue != 0 }
-    }
-
     public var metadataXML: String {
         #"<OMTTally Preview="\#(preview ? "true" : "false")" Program="\#(program ? "true" : "false")" />"#
     }
 
     public var description: String {
-        "Preview: \(Preview) Program: \(Program)"
+        "Preview: \(preview ? 1 : 0) Program: \(program ? 1 : 0)"
     }
 }

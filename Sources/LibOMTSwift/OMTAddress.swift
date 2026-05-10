@@ -44,24 +44,8 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
         fullName
     }
 
-    public func toString() -> String {
-        fullName
-    }
-
-    public func ToString() -> String {
-        fullName
-    }
-
     public static func fullName(machineName: String, name: String) -> String {
         "\(machineName) (\(name))"
-    }
-
-    public static func toString(machineName: String, name: String) -> String {
-        fullName(machineName: machineName, name: name)
-    }
-
-    public static func ToString(_ machineName: String, _ name: String) -> String {
-        toString(machineName: machineName, name: name)
     }
 
     public static func parseFullName(_ fullName: String, port: Int, host: String? = nil) -> OMTAddress? {
@@ -69,14 +53,6 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
         let machine = fullName[..<open].trimmingCharacters(in: .whitespacesAndNewlines)
         let source = fullName[fullName.index(after: open)..<fullName.index(before: fullName.endIndex)]
         return OMTAddress(machineName: machine, name: String(source), port: port, host: host)
-    }
-
-    public static func create(_ fullName: String, port: Int) -> OMTAddress? {
-        parseFullName(fullName, port: port)
-    }
-
-    public static func Create(_ fullName: String, _ port: Int) -> OMTAddress? {
-        create(fullName, port: port)
     }
 
     public static func parseURL(_ value: String) -> OMTAddress? {
@@ -94,16 +70,8 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
             .replacingOccurrences(of: ".", with: "\\.")
     }
 
-    public static func EscapeFullName(_ fullName: String) -> String {
-        escapeFullName(fullName)
-    }
-
     public static func sanitizeName(_ name: String) -> String {
         name
-    }
-
-    public static func SanitizeName(_ name: String) -> String {
-        sanitizeName(name)
     }
 
     public static func unescapeFullName(_ fullName: String) -> String {
@@ -135,17 +103,9 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
         return output
     }
 
-    public static func UnescapeFullName(_ fullName: String) -> String {
-        unescapeFullName(fullName)
-    }
-
     public static func isValid(_ fullName: String?) -> Bool {
         guard let fullName, !fullName.isEmpty else { return false }
         return fullName.contains("(") && fullName.contains(")")
-    }
-
-    public static func IsValid(_ fullName: String?) -> Bool {
-        isValid(fullName)
     }
 
     public static func getMachineName(_ fullName: String) -> String {
@@ -153,34 +113,14 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    public static func GetMachineName(_ fullName: String) -> String {
-        getMachineName(fullName)
-    }
-
     public static func getName(_ fullName: String) -> String {
         guard let open = fullName.firstIndex(of: "("), fullName.last == ")" else { return "" }
         return String(fullName[fullName.index(after: open)..<fullName.index(before: fullName.endIndex)])
     }
 
-    public static func GetName(_ fullName: String) -> String {
-        getName(fullName)
-    }
-
-    public func toURL() -> String {
-        url
-    }
-
-    public func ToURL() -> String {
-        url
-    }
-
     public mutating func clearAddresses() {
         addresses.removeAll()
         host = nil
-    }
-
-    public mutating func ClearAddresses() {
-        clearAddresses()
     }
 
     @discardableResult
@@ -191,11 +131,6 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
             host = address
         }
         return true
-    }
-
-    @discardableResult
-    public mutating func AddAddress(_ address: String) -> Bool {
-        addAddress(address)
     }
 
     public var xml: String {
@@ -212,14 +147,6 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
         }
         xml += "</OMTAddress>"
         return xml
-    }
-
-    public func toXML() -> String {
-        xml
-    }
-
-    public func ToXML() -> String {
-        xml
     }
 
     public init?(xml: String) {
@@ -240,22 +167,6 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
             address.removed = true
         }
         self = address
-    }
-
-    public static func fromXML(_ xml: String) -> OMTAddress? {
-        OMTAddress(xml: xml)
-    }
-
-    public static func FromXML(_ xml: String) -> OMTAddress? {
-        fromXML(xml)
-    }
-
-    public var MachineName: String { machineName }
-    public var Name: String { name }
-    public var Addresses: [String] { addresses }
-    public var Port: Int {
-        get { port }
-        set { port = newValue }
     }
 
     mutating private func limitFullNameLength() {

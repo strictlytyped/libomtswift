@@ -11,15 +11,6 @@ public enum VMXProfile: Int32, Sendable {
     case omtLowQuality = 133
     case omtStandardQuality = 166
     case omtHighQuality = 199
-
-    public static let None = VMXProfile.none
-    public static let Default = VMXProfile.default
-    public static let LQ = VMXProfile.lowQuality
-    public static let SQ = VMXProfile.standardQuality
-    public static let HQ = VMXProfile.highQuality
-    public static let OMT_LQ = VMXProfile.omtLowQuality
-    public static let OMT_SQ = VMXProfile.omtStandardQuality
-    public static let OMT_HQ = VMXProfile.omtHighQuality
 }
 
 public enum VMXImageFormat: Sendable {
@@ -33,22 +24,7 @@ public enum VMXImageFormat: Sendable {
     case uyva
     case p216
     case pa16
-
-    public static let None = VMXImageFormat.none
-    public static let UYVY = VMXImageFormat.uyvy
-    public static let YUY2 = VMXImageFormat.yuy2
-    public static let NV12 = VMXImageFormat.nv12
-    public static let YV12 = VMXImageFormat.yv12
-    public static let BGRA = VMXImageFormat.bgra
-    public static let BGRX = VMXImageFormat.bgrx
-    public static let UYVA = VMXImageFormat.uyva
-    public static let P216 = VMXImageFormat.p216
-    public static let PA16 = VMXImageFormat.pa16
 }
-
-public typealias VMXImageType = VMXImageFormat
-public typealias VMXColorSpace = OMTColorSpace
-public typealias OMTVMX1Codec = OMTVMXCodec
 
 public final class OMTVMXCodec {
     public let width: Int32
@@ -97,20 +73,6 @@ public final class OMTVMXCodec {
         symbols.getEncodedPreviewLength(instance)
     }
 
-    public func getEncodedPreviewLength() -> Int32 {
-        encodedPreviewLength()
-    }
-
-    public func GetEncodedPreviewLength() -> Int32 {
-        encodedPreviewLength()
-    }
-
-    public var Width: Int32 { width }
-    public var Height: Int32 { height }
-    public var FramesPerSecond: Int32 { framesPerSecond }
-    public var Profile: VMXProfile { profile }
-    public var ColorSpace: OMTColorSpace { colorSpace }
-
     public func encode(
         _ format: VMXImageFormat,
         source: Data,
@@ -130,16 +92,6 @@ public final class OMTVMXCodec {
         guard resultLength > 0 else { throw OMTError.vmxFailure(resultLength) }
         output.count = Int(resultLength)
         return output
-    }
-
-    public func Encode(
-        _ imageType: VMXImageType,
-        source: Data,
-        srcStride: Int32,
-        interlaced: Bool,
-        maxOutputLength: Int = OMTConstants.videoMaxSize
-    ) throws -> Data {
-        try encode(imageType, source: source, stride: srcStride, interlaced: interlaced, maxOutputLength: maxOutputLength)
     }
 
     public func decode(
@@ -164,24 +116,6 @@ public final class OMTVMXCodec {
         return output
     }
 
-    public func Decode(
-        _ imageType: VMXImageType,
-        compressed: Data,
-        stride: Int32,
-        outputLength: Int
-    ) throws -> Data {
-        try decode(imageType, compressed: compressed, stride: stride, outputLength: outputLength)
-    }
-
-    public func DecodePreview(
-        _ imageType: VMXImageType,
-        compressed: Data,
-        stride: Int32,
-        outputLength: Int
-    ) throws -> Data {
-        try decode(imageType, compressed: compressed, stride: stride, outputLength: outputLength, preview: true)
-    }
-
     public func getPreviewSize(interlaced: Bool) -> OMTSize {
         var previewWidth = width >> 3
         var previewHeight = height >> 3
@@ -194,10 +128,6 @@ public final class OMTVMXCodec {
         return OMTSize(width: previewWidth, height: previewHeight)
     }
 
-    public func GetPreviewSize(_ interlaced: Bool) -> OMTSize {
-        getPreviewSize(interlaced: interlaced)
-    }
-
     public func calculatePSNR(_ image1: Data, _ image2: Data, stride: Int32, bytesPerPixel: Int32, size: OMTSize) -> Float {
         guard image1.count == image2.count, !image1.isEmpty else { return 0 }
         var sumSquaredError: Double = 0
@@ -208,10 +138,6 @@ public final class OMTVMXCodec {
         guard sumSquaredError > 0 else { return Float.infinity }
         let mse = sumSquaredError / Double(max(1, Int(size.width * size.height * bytesPerPixel)))
         return Float(10.0 * log10((255.0 * 255.0) / mse))
-    }
-
-    public func CalculatePSNR(_ image1: Data, _ image2: Data, stride: Int32, bytesPerPixel: Int32, size: OMTSize) -> Float {
-        calculatePSNR(image1, image2, stride: stride, bytesPerPixel: bytesPerPixel, size: size)
     }
 
     private func callEncode(

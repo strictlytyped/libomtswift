@@ -84,53 +84,6 @@ public enum OMTUtils {
         }
     }
 
-    public static func StringToPtrUTF8(_ string: String) -> Data {
-        stringToUTF8Data(string)
-    }
-
-    public static func PtrToStringUTF8(_ data: Data, maxLength: Int? = nil) -> String {
-        utf8String(from: data, maxLength: maxLength)
-    }
-
-    public static func ToFrameRate(_ frameRateN: Int32, _ frameRateD: Int32) -> Float {
-        toFrameRate(frameRateN, frameRateD)
-    }
-
-    public static func FromFrameRate(_ fps: Float) -> (numerator: Int32, denominator: Int32) {
-        fromFrameRate(fps)
-    }
-
-    public static func InterleavedToPlanarAudio32F32F(
-        numSamples: Int,
-        channels: Int,
-        sampleStride: Int,
-        source: [Float],
-        destination: inout [Float]
-    ) {
-        interleavedToPlanarAudio32F32F(
-            numSamples: numSamples,
-            channels: channels,
-            sampleStride: sampleStride,
-            source: source,
-            destination: &destination
-        )
-    }
-
-    public static func InterleavedToPlanarAudio1632F(
-        numSamples: Int,
-        channels: Int,
-        sampleStride: Int,
-        source: [Int16],
-        destination: inout [Float]
-    ) {
-        interleavedToPlanarAudio1632F(
-            numSamples: numSamples,
-            channels: channels,
-            sampleStride: sampleStride,
-            source: source,
-            destination: &destination
-        )
-    }
 }
 
 private extension Double {

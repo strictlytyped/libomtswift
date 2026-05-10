@@ -54,10 +54,6 @@ public struct OMTClock: Sendable {
         lastTimestamp = frame.timestamp
     }
 
-    public mutating func Process(_ frame: inout OMTMediaFrame) {
-        process(&frame)
-    }
-
     private mutating func reset(_ frame: OMTMediaFrame) {
         frameRateDenominator = frame.frameRateDenominator
         frameRateNumerator = frame.frameRateNumerator

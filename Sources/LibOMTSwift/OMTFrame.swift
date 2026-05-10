@@ -4,9 +4,6 @@ public struct OMTFrame: Equatable, Sendable {
     public static let headerLength = 16
     public static let videoExtendedHeaderLength = 32
     public static let audioExtendedHeaderLength = 24
-    public static let HeaderLength = headerLength
-    public static let ExtendedHeaderVideo = videoExtendedHeaderLength
-    public static let ExtendedHeaderAudio = audioExtendedHeaderLength
 
     public var frameType: OMTFrameType
     public var timestamp: Int64
@@ -48,19 +45,6 @@ public struct OMTFrame: Equatable, Sendable {
         }
         return 0
     }
-
-    public var HeaderLength: Int { Self.headerLength }
-    public var ExtendedHeaderLength: Int { extendedHeaderLength }
-    public var Length: Int { encodedLength }
-    public var FrameType: OMTFrameType {
-        get { frameType }
-        set { frameType = newValue }
-    }
-    public var Timestamp: Int64 {
-        get { timestamp }
-        set { timestamp = newValue }
-    }
-    public var MetadataLength: Int { metadataData.count }
 
     public var metadataData: Data {
         guard let metadata else { return Data() }
@@ -136,10 +120,6 @@ public struct OMTFrame: Equatable, Sendable {
         writer.writeData(payload.prefix(payloadLength))
         writer.writeData(metadataData)
         return writer.data
-    }
-
-    public func Encoded() throws -> Data {
-        try encoded()
     }
 
     public static func decode(_ data: Data) throws -> OMTFrame {
@@ -236,7 +216,4 @@ public struct OMTFrame: Equatable, Sendable {
         )
     }
 
-    public static func Decode(_ data: Data) throws -> OMTFrame {
-        try decode(data)
-    }
 }

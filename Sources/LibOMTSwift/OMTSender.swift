@@ -16,15 +16,6 @@ public final class OMTSender {
         set { lock.withLock { configuredQuality = newValue } }
     }
 
-    public var Port: Int { port }
-    public var Address: String { address.fullName }
-    public var URL: String { url }
-    public var Connections: Int { connectionCount }
-    public var Quality: OMTQuality {
-        get { quality }
-        set { quality = newValue }
-    }
-
     private static let listenerStartTimeout: TimeInterval = 1.0
 
     private let queue = DispatchQueue(label: "dev.strictlytyped.omtswift.sender")
@@ -161,10 +152,6 @@ public final class OMTSender {
         stop()
     }
 
-    public func Dispose() {
-        stop()
-    }
-
     public func setSenderInformation(_ senderInfo: OMTSenderInfo?) {
         let xml = senderInfo?.xml
         lock.withLock {
@@ -175,18 +162,10 @@ public final class OMTSender {
         }
     }
 
-    public func SetSenderInformation(_ senderInfo: OMTSenderInfo?) {
-        setSenderInformation(senderInfo)
-    }
-
     public func addConnectionMetadata(_ xml: String) {
         lock.withLock {
             connectionMetadata.append(xml)
         }
-    }
-
-    public func AddConnectionMetadata(_ xml: String) {
-        addConnectionMetadata(xml)
     }
 
     public func clearConnectionMetadata() {
@@ -195,17 +174,9 @@ public final class OMTSender {
         }
     }
 
-    public func ClearConnectionMetadata() {
-        clearConnectionMetadata()
-    }
-
     public func setRedirect(_ newAddress: String?) {
         let xml = OMTRedirect.toXML(newAddress)
         _ = try? sendMetadata(OMTMetadata(xml: xml))
-    }
-
-    public func SetRedirect(_ newAddress: String?) {
-        setRedirect(newAddress)
     }
 
     public func setTally(_ tally: OMTTally) {
@@ -213,10 +184,6 @@ public final class OMTSender {
             self.tally = tally
         }
         _ = try? sendMetadata(OMTMetadata(xml: OMTMetadataCommand.tally(tally)))
-    }
-
-    public func SetTally(_ tally: OMTTally) {
-        setTally(tally)
     }
 
     @discardableResult
@@ -240,25 +207,12 @@ public final class OMTSender {
         return 0
     }
 
-    @discardableResult
-    public func Send(_ frame: OMTMediaFrame) throws -> Int {
-        try send(frame)
-    }
-
     public func getVideoStatistics() -> OMTStatistics {
         aggregateStatistics(for: .video)
     }
 
-    public func GetVideoStatistics() -> OMTStatistics {
-        getVideoStatistics()
-    }
-
     public func getAudioStatistics() -> OMTStatistics {
         aggregateStatistics(for: .audio)
-    }
-
-    public func GetAudioStatistics() -> OMTStatistics {
-        getAudioStatistics()
     }
 
     private func accept(_ connection: NWConnection) {
