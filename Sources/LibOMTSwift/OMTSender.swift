@@ -1,6 +1,22 @@
 import Foundation
 import Network
 
+private final class NetServicePublishDelegate: NSObject, NetServiceDelegate {
+    private let name: String
+
+    init(name: String) {
+        self.name = name
+    }
+
+    func netServiceDidPublish(_ sender: NetService) {
+        NSLog("OMT Bonjour service published: \(sender.name) on port \(sender.port)")
+    }
+
+    func netService(_ sender: NetService, didNotPublish errorDict: [String: NSNumber]) {
+        NSLog("OMT Bonjour service failed to publish \(name): \(errorDict)")
+    }
+}
+
 public final class OMTSender {
     public let name: String
     public private(set) var address: OMTAddress
@@ -25,6 +41,7 @@ public final class OMTSender {
     private var videoClock = OMTClock()
     private var audioClock = OMTClock(audio: true)
     private var netService: NetService?
+    private var netServiceDelegate: NetServicePublishDelegate?
     private var channels: [OMTChannel] = []
     private var configuredQuality: OMTQuality
     private var senderInfoXML: String?
@@ -62,6 +79,9 @@ public final class OMTSender {
 
         self.listener = selectedListener.listener
         self.address = OMTAddress(name: name, port: selectedPort, host: ProcessInfo.processInfo.hostName)
+        let publishedService = Self.publishNetService(for: address, port: selectedPort)
+        self.netService = publishedService.service
+        self.netServiceDelegate = publishedService.delegate
 
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
@@ -71,10 +91,6 @@ public final class OMTSender {
                 self?.onError?(error)
             }
         }
-
-        let service = NetService(domain: "local.", type: OMTConstants.serviceType, name: address.fullName, port: Int32(selectedPort))
-        service.publish()
-        self.netService = service
     }
 
     private struct ReadyListener {
@@ -138,7 +154,9 @@ public final class OMTSender {
     }
 
     public func stop() {
-        netService?.stop()
+        if let netService {
+            Self.stopNetService(netService)
+        }
         listener.cancel()
         let current = lock.withLock { () -> [OMTChannel] in
             let current = channels
@@ -146,6 +164,48 @@ public final class OMTSender {
             return current
         }
         current.forEach { $0.close() }
+    }
+
+    private struct PublishedNetService {
+        let service: NetService
+        let delegate: NetServicePublishDelegate
+    }
+
+    private static func publishNetService(for address: OMTAddress, port: Int) -> PublishedNetService {
+        let service = NetService(
+            domain: "local.",
+            type: OMTConstants.serviceType,
+            name: address.fullName,
+            port: Int32(port)
+        )
+        let delegate = NetServicePublishDelegate(name: address.fullName)
+        service.delegate = delegate
+
+        let publish: () -> Void = {
+            service.schedule(in: .main, forMode: .common)
+            service.publish()
+        }
+
+        if Thread.isMainThread {
+            publish()
+        } else {
+            DispatchQueue.main.async(execute: publish)
+        }
+
+        return PublishedNetService(service: service, delegate: delegate)
+    }
+
+    private static func stopNetService(_ service: NetService) {
+        let stop: () -> Void = {
+            service.stop()
+            service.remove(from: .main, forMode: .common)
+        }
+
+        if Thread.isMainThread {
+            stop()
+        } else {
+            DispatchQueue.main.async(execute: stop)
+        }
     }
 
     public func close() {

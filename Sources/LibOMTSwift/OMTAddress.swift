@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
     public var machineName: String
@@ -16,7 +19,7 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
         removed: Bool = false,
         addresses: [String] = []
     ) {
-        self.machineName = Self.sanitizeName(machineName)
+        self.machineName = Self.sanitizeMachineName(machineName)
         self.name = Self.sanitizeName(name)
         self.port = port
         self.host = host
@@ -29,7 +32,7 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
     }
 
     public init(name: String, port: Int) {
-        self.init(machineName: ProcessInfo.processInfo.hostName, name: name, port: port)
+        self.init(machineName: Self.defaultMachineName(), name: name, port: port)
     }
 
     public var fullName: String {
@@ -71,7 +74,27 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
     }
 
     public static func sanitizeName(_ name: String) -> String {
-        name
+        let sanitized = cleanedName(name)
+        return sanitized.isEmpty ? "OMT" : sanitized
+    }
+
+    static func defaultMachineName() -> String {
+#if canImport(UIKit)
+        let deviceName = cleanedName(UIDevice.current.name)
+        if !deviceName.isEmpty {
+            return sanitizeMachineName(deviceName)
+        }
+#endif
+        return sanitizeMachineName(ProcessInfo.processInfo.hostName)
+    }
+
+    static func sanitizeMachineName(_ machineName: String) -> String {
+        var sanitized = cleanedName(machineName)
+        if !sanitized.lowercased().hasSuffix(".local"),
+           let separator = sanitized.firstIndex(of: ".") {
+            sanitized = String(sanitized[..<separator])
+        }
+        return sanitized.isEmpty ? "Device" : sanitized
     }
 
     public static func unescapeFullName(_ fullName: String) -> String {
@@ -171,9 +194,44 @@ public struct OMTAddress: Equatable, Sendable, CustomStringConvertible {
 
     mutating private func limitFullNameLength() {
         let maxFullNameLength = 63
-        let oversize = fullName.count - maxFullNameLength
-        guard oversize > 0, oversize < name.count else { return }
-        name = String(name.dropLast(oversize)).trimmingCharacters(in: .whitespacesAndNewlines)
+        while fullName.utf8.count > maxFullNameLength {
+            if name.utf8.count > 1 {
+                name = Self.truncated(name, toUTF8ByteCount: name.utf8.count - 1)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if name.isEmpty {
+                    name = "OMT"
+                }
+            } else if machineName.utf8.count > 1 {
+                machineName = Self.truncated(machineName, toUTF8ByteCount: machineName.utf8.count - 1)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if machineName.isEmpty {
+                    machineName = "Device"
+                }
+            } else {
+                break
+            }
+        }
+    }
+
+    private static func cleanedName(_ name: String) -> String {
+        name
+            .replacingOccurrences(of: "\u{0}", with: "")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func truncated(_ value: String, toUTF8ByteCount maxBytes: Int) -> String {
+        guard value.utf8.count > maxBytes else { return value }
+        var output = ""
+        var byteCount = 0
+        for character in value {
+            let characterByteCount = String(character).utf8.count
+            guard byteCount + characterByteCount <= maxBytes else { break }
+            output.append(character)
+            byteCount += characterByteCount
+        }
+        return output
     }
 }
 
