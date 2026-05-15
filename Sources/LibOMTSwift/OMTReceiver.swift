@@ -30,7 +30,10 @@ public final class OMTReceiver {
     private var closed = false
     private var lastBeginConnect = Date.distantPast
     private var reconnectWorkItem: DispatchWorkItem?
-    private let reconnectInterval: TimeInterval = 1.0
+    private let reconnectBaseInterval: TimeInterval = 1.0
+    private let reconnectMaxInterval: TimeInterval = 10.0
+    private var consecutiveConnectFailures = 0
+    private var waitingToStartAudio = false
 
     public convenience init(
         url: String,
@@ -176,9 +179,10 @@ public final class OMTReceiver {
                 return ([], false)
             }
 
+            let reconnectDelay = currentReconnectDelayLocked()
             let elapsed = now.timeIntervalSince(lastBeginConnect)
-            if !force, elapsed < reconnectInterval {
-                scheduleReconnectLocked(after: reconnectInterval - elapsed)
+            if !force, elapsed < reconnectDelay {
+                scheduleReconnectLocked(after: reconnectDelay - elapsed)
                 return ([], false)
             }
 
@@ -188,6 +192,7 @@ public final class OMTReceiver {
             let current = [videoChannel, audioChannel].compactMap { $0 }
             videoChannel = nil
             audioChannel = nil
+            waitingToStartAudio = false
             return (current, true)
         }
         guard connectionPlan.shouldStart else { return }
@@ -195,6 +200,7 @@ public final class OMTReceiver {
 
         let newVideoChannel: OMTChannel?
         let newAudioChannel: OMTChannel?
+        let shouldStartVideoChannel = frameTypes.contains(.video) || frameTypes == .metadata
         if frameTypes.contains(.video) {
             newVideoChannel = makeChannel(type: .video, address: targetAddress)
         } else if frameTypes == .metadata {
@@ -202,7 +208,7 @@ public final class OMTReceiver {
         } else {
             newVideoChannel = nil
         }
-        if frameTypes.contains(.audio) {
+        if frameTypes.contains(.audio), !shouldStartVideoChannel {
             newAudioChannel = makeChannel(type: .audio, address: targetAddress)
         } else {
             newAudioChannel = nil
@@ -214,8 +220,9 @@ public final class OMTReceiver {
             }
             videoChannel = newVideoChannel
             audioChannel = newAudioChannel
+            waitingToStartAudio = shouldStartVideoChannel && frameTypes.contains(.audio)
             if !hasPendingRequiredChannelsLocked() {
-                scheduleReconnectLocked(after: reconnectInterval)
+                scheduleReconnectLocked(after: currentReconnectDelayLocked())
             }
             return []
         }
@@ -229,6 +236,7 @@ public final class OMTReceiver {
             let current = [videoChannel, audioChannel].compactMap { $0 }
             videoChannel = nil
             audioChannel = nil
+            waitingToStartAudio = false
             return current
         }
         current.forEach { $0.close() }
@@ -245,7 +253,13 @@ public final class OMTReceiver {
             let channel = OMTChannel(connection: connection, receiveFrameType: type, queue: queue)
             channel.onReady = { [weak self, weak channel] in
                 guard let self, let channel else { return }
+                self.lock.withLock {
+                    self.consecutiveConnectFailures = 0
+                }
                 self.subscribe(channel, type: type)
+                if type == .video || type == .metadata {
+                    self.startAudioChannelIfNeeded()
+                }
             }
             channel.onFrame = { [weak self] frame in
                 self?.receive(frame)
@@ -298,9 +312,15 @@ public final class OMTReceiver {
             guard videoChannel != nil else { return false }
         }
         if frameTypes.contains(.audio) {
-            guard audioChannel != nil else { return false }
+            guard audioChannel != nil || waitingToStartAudio else { return false }
         }
         return true
+    }
+
+    private func currentReconnectDelayLocked() -> TimeInterval {
+        let exponent = min(consecutiveConnectFailures, 4)
+        let delay = reconnectBaseInterval * pow(2.0, Double(exponent))
+        return min(delay, reconnectMaxInterval)
     }
 
     private func scheduleReconnectLocked(after delay: TimeInterval) {
@@ -310,6 +330,36 @@ public final class OMTReceiver {
         }
         reconnectWorkItem = workItem
         queue.asyncAfter(deadline: .now() + max(0, delay), execute: workItem)
+    }
+
+    private func startAudioChannelIfNeeded() {
+        let targetAddress = resolvedAddress()
+        let shouldStart = lock.withLock { () -> Bool in
+            guard !closed, waitingToStartAudio, audioChannel == nil else { return false }
+            waitingToStartAudio = false
+            return true
+        }
+        guard shouldStart else { return }
+
+        guard let newAudioChannel = makeChannel(type: .audio, address: targetAddress) else {
+            lock.withLock {
+                consecutiveConnectFailures += 1
+                scheduleReconnectLocked(after: currentReconnectDelayLocked())
+            }
+            return
+        }
+
+        let channelsToClose = lock.withLock { () -> [OMTChannel] in
+            guard !closed, audioChannel == nil else {
+                return [newAudioChannel]
+            }
+            audioChannel = newAudioChannel
+            return []
+        }
+        channelsToClose.forEach { $0.close() }
+        if channelsToClose.isEmpty {
+            newAudioChannel.start()
+        }
     }
 
     private func subscribe(_ channel: OMTChannel, type: OMTFrameType) {
@@ -337,8 +387,20 @@ public final class OMTReceiver {
 
     private func remove(_ channel: OMTChannel) {
         let shouldReconnect = lock.withLock { () -> Bool in
-            if videoChannel === channel { videoChannel = nil }
-            if audioChannel === channel { audioChannel = nil }
+            var wasCurrent = false
+            if videoChannel === channel {
+                videoChannel = nil
+                waitingToStartAudio = false
+                wasCurrent = true
+            }
+            if audioChannel === channel {
+                audioChannel = nil
+                wasCurrent = true
+            }
+            guard wasCurrent else { return false }
+            if !channel.didBecomeReady {
+                consecutiveConnectFailures += 1
+            }
             return !closed && !isConnectedLocked()
         }
         if shouldReconnect {

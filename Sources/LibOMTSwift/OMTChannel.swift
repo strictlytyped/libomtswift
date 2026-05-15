@@ -2,6 +2,10 @@ import Foundation
 import Network
 
 final class OMTChannel {
+    private static let maxPendingVideoFrames = 3
+    private static let maxPendingAudioFrames = 12
+    private static let maxPendingMediaBytes = 32 * 1_048_576
+
     let connection: NWConnection
     let receiveFrameType: OMTFrameType
 
@@ -17,6 +21,10 @@ final class OMTChannel {
     private var metadataState = OMTMetadataState()
     private var closed = false
     private var ready = false
+    private var hasBeenReady = false
+    private var pendingVideoFrames = 0
+    private var pendingAudioFrames = 0
+    private var pendingMediaBytes = 0
     private var stats = OMTStatistics()
 
     init(connection: NWConnection, receiveFrameType: OMTFrameType, queue: DispatchQueue) {
@@ -31,6 +39,10 @@ final class OMTChannel {
 
     var isConnected: Bool {
         lock.withLock { ready && !closed }
+    }
+
+    var didBecomeReady: Bool {
+        lock.withLock { hasBeenReady }
     }
 
     var senderInfo: OMTSenderInfo? {
@@ -58,7 +70,10 @@ final class OMTChannel {
             guard let self else { return }
             switch state {
             case .ready:
-                self.lock.withLock { self.ready = true }
+                self.lock.withLock {
+                    self.ready = true
+                    self.hasBeenReady = true
+                }
                 self.onReady?()
                 self.receiveLoop()
             case .waiting(let error):
@@ -89,8 +104,21 @@ final class OMTChannel {
         }
 
         let encoded = try frame.encoded(preview: previewRequested)
+        let shouldSend = lock.withLock {
+            guard !shouldDropForBackpressureLocked(frameType: frame.frameType, byteCount: encoded.count) else {
+                stats.framesDropped += 1
+                return false
+            }
+            trackPendingSendLocked(frameType: frame.frameType, byteCount: encoded.count)
+            return true
+        }
+        guard shouldSend else { return 0 }
+
         connection.send(content: encoded, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
+            self.lock.withLock {
+                self.completePendingSendLocked(frameType: frame.frameType, byteCount: encoded.count)
+            }
             if let error {
                 self.onError?(error)
                 self.close()
@@ -104,6 +132,42 @@ final class OMTChannel {
             }
         })
         return encoded.count
+    }
+
+    private func shouldDropForBackpressureLocked(frameType: OMTFrameType, byteCount: Int) -> Bool {
+        guard frameType != .metadata else { return false }
+        if pendingMediaBytes + byteCount > Self.maxPendingMediaBytes {
+            return true
+        }
+        if frameType.contains(.video), pendingVideoFrames >= Self.maxPendingVideoFrames {
+            return true
+        }
+        if frameType.contains(.audio), pendingAudioFrames >= Self.maxPendingAudioFrames {
+            return true
+        }
+        return false
+    }
+
+    private func trackPendingSendLocked(frameType: OMTFrameType, byteCount: Int) {
+        guard frameType != .metadata else { return }
+        if frameType.contains(.video) {
+            pendingVideoFrames += 1
+        }
+        if frameType.contains(.audio) {
+            pendingAudioFrames += 1
+        }
+        pendingMediaBytes += byteCount
+    }
+
+    private func completePendingSendLocked(frameType: OMTFrameType, byteCount: Int) {
+        guard frameType != .metadata else { return }
+        if frameType.contains(.video), pendingVideoFrames > 0 {
+            pendingVideoFrames -= 1
+        }
+        if frameType.contains(.audio), pendingAudioFrames > 0 {
+            pendingAudioFrames -= 1
+        }
+        pendingMediaBytes = max(0, pendingMediaBytes - byteCount)
     }
 
     func close() {
